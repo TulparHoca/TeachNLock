@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useLock } from '../context/LockContext';
 import QRCode from 'qrcode';
-// 🔥 EKLENDİ: Coffee ve BookOpen ikonları
 import { Lock, ScanFace, Cloud, Sun, CloudRain, Users, Timer, Power, X, RefreshCw, Delete, Coffee, BookOpen } from 'lucide-react';
 
-// --- BİLEŞEN: NUMPAD (DAHA GENİŞ & FERAH) ---
+// --- BİLEŞEN: NUMPAD ---
 const Numpad = ({ onInput, onDelete, onConfirm }: { onInput: (n: number) => void, onDelete: () => void, onConfirm: () => void }) => {
   return (
     <div className="bg-slate-950/50 p-6 rounded-2xl border border-white/10 w-full h-full flex flex-col justify-center">
@@ -97,7 +96,7 @@ const ExamModal = ({ onClose }: { onClose: () => void }) => {
   );
 };
 
-
+// --- MODAL: GRUP OLUŞTURMA ---
 const GroupModal = ({ onClose }: { onClose: () => void }) => {
   const [activeInput, setActiveInput] = useState<'TOTAL' | 'SIZE'>('TOTAL');
   const [totalStudents, setTotalStudents] = useState('30');
@@ -182,8 +181,8 @@ const GroupModal = ({ onClose }: { onClose: () => void }) => {
 
 // --- ANA BİLEŞEN ---
 export default function LockScreen() {
-  // 🔥 scheduleStatus EKLENDİ
   const { sessionId, machineId, unlock, scheduleStatus } = useLock();
+  
   const [qrCodeUrl, setQrCodeUrl] = useState('');
   const [currentTime, setCurrentTime] = useState(new Date());
   const [weather, setWeather] = useState<{temp: number, code: number} | null>(null);
@@ -222,7 +221,7 @@ export default function LockScreen() {
     return <CloudRain size={40} className="text-cyan-400 drop-shadow-[0_0_10px_rgba(34,211,238,0.5)]" />;
   };
 
-  // 🔥 ACİL DURUM KODU (Senin kodun + 1453 Master Key)
+  // ACİL DURUM KODU (1453 + Tarih)
   const handleEmergency = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setEmergencyInput(val);
@@ -231,9 +230,7 @@ export default function LockScreen() {
     const day = String(today.getDate()).padStart(2, '0');
     const month = String(today.getMonth() + 1).padStart(2, '0');
 
-    // Dinamik kod
     const dynamicCode = `${day}${month}34`;
-    // Master kod
     const MASTER_CODE = "1453"; 
 
     if (val === dynamicCode || val === MASTER_CODE) { 
@@ -242,19 +239,16 @@ export default function LockScreen() {
     }
   };
 
-  // FİŞİ ÇEKME
+  // 🔥 GÜNCELLENDİ: ARTIK SORU SORMAZ, DİREKT KAPATIR
   const handleSystemShutdown = () => {
-      if (confirm("Bilgisayar tamamen kapatılacak. Emin misin?")) {
-          window.electron?.shutdownPC();
-      }
+      window.electron?.shutdownPC();
   };
 
-  // 🔥 YENİ EKLENEN TASARIM MANTIĞI: DERS DURUMU
+  // Tasarım: Ders Durumu Renkleri
   const isFreeTime = scheduleStatus.includes('Serbest') || scheduleStatus.includes('Teneffüs') || scheduleStatus.includes('Öğle');
   const statusColor = isFreeTime ? 'text-emerald-400' : 'text-amber-400';
   const statusBg = isFreeTime ? 'bg-emerald-950/40 border-emerald-500/20 shadow-emerald-500/10' : 'bg-amber-950/40 border-amber-500/20 shadow-amber-500/10';
   const statusIcon = isFreeTime ? <Coffee size={20} className={statusColor}/> : <BookOpen size={20} className={statusColor}/>;
-
 
   return (
     <div className="fixed inset-0 w-screen h-screen bg-[url('https://images.unsplash.com/photo-1510511459019-5dda7724fd87?q=80&w=1920')] bg-cover bg-center flex flex-col items-center justify-between py-10 text-white overflow-hidden font-sans select-none">
@@ -284,7 +278,7 @@ export default function LockScreen() {
         <div className="relative bg-slate-900/60 backdrop-blur-xl p-6 rounded-3xl border border-cyan-500/30 shadow-[0_0_50px_-10px_rgba(6,182,212,0.3)] flex flex-col items-center group transition-all duration-500 hover:shadow-[0_0_70px_-10px_rgba(6,182,212,0.5)]">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-1 bg-cyan-500 blur-md opacity-50 group-hover:opacity-100 transition-opacity duration-500"></div>
           
-          {/* 🔥 BURASI EKLENDİ: QR ÜSTÜNDEKİ DURUM HAPI */}
+          {/* 🔥 QR ÜSTÜNDEKİ DURUM HAPI */}
           <div className={`
              absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap px-6 py-2.5 rounded-full border backdrop-blur-md shadow-lg flex items-center gap-3 animate-in zoom-in duration-500 z-20 
              ${statusBg}
@@ -295,7 +289,6 @@ export default function LockScreen() {
                {scheduleStatus}
              </span>
           </div>
-          {/* 🔥 EKLEME BİTTİ */}
 
           <div className="relative mb-4 flex justify-center -mt-10">
              <div className="absolute -inset-4 rounded-full bg-cyan-500/20 blur-xl animate-ping-slow"></div>
@@ -338,7 +331,6 @@ export default function LockScreen() {
         </button>
         <div className="flex flex-col items-end opacity-10 hover:opacity-100 transition-opacity duration-500">
            <span className="text-[10px] uppercase font-bold text-slate-500 mb-1">Acil Durum Kodu</span>
-           {/* Placeholder boş bırakıldı, şifre aralıkları açıldı */}
            <input 
              type="password" 
              placeholder="" 

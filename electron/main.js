@@ -26,41 +26,43 @@ const BANNED_APPS = [
     'magnify.exe', 'narrator.exe', 'osk.exe'
 ];
 
-// Otomatik oynatma politikaları
+// Uygulama ayarları
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('disable-pinch'); 
 app.commandLine.appendSwitch('overscroll-history-navigation', '0');
 
-// Tek instance kilidi (Uygulama zaten açıksa ikincisini açma)
 if (!app.requestSingleInstanceLock()) { app.exit(0); }
 
-// 🔥 GÜNCELLENMİŞ OTO-BAŞLATMA FONKSİYONU
-function ensureAutoLaunch() {
+// 🔥 KESİN ÇÖZÜM: BAŞLANGICA EKLEME FONKSİYONU
+function forceAutoLaunch() {
   if (isDev) return; // Geliştirici modunda çalışma
 
-  const appFolder = path.dirname(process.execPath);
-  const updateExe = path.resolve(appFolder, '..', 'Update.exe');
-  const exeName = path.basename(process.execPath);
+  const appName = "TeachNLock"; // Registry'deki adı
+  const exePath = process.execPath; // Çalışan .exe'nin tam yolu
 
-  // 1. Yöntem: Electron'un kendi API'si (En Temizi)
+  // 1. Yöntem: Electron API (Kibar Yöntem)
   app.setLoginItemSettings({
     openAtLogin: true,
-    path: process.execPath,
-    args: [
-      '--process-start-args', `"--hidden"`
-    ]
+    path: exePath,
+    args: ['--hidden']
   });
 
-  // 2. Yöntem: Registry Yedeklemesi (Garanti olsun diye)
-  // Sadece 'HKCU' (Current User) kullanıyoruz ki Admin hakkı olmadan da çalışsın
-  const appName = "TeachNLock";
-  const exePath = `"${process.execPath}"`; // Tırnak önemli (boşluklu yollar için)
+  // 2. Yöntem: Registry (Agresif Yöntem)
+  // Admin yetkisiyle çalıştığımız için HKLM (Tüm Kullanıcılar) ve HKCU (Mevcut Kullanıcı) ikisine de dener.
+  // " işareti yollardaki boşluklar için kritiktir.
   
-  exec(`REG QUERY "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "${appName}"`, (err) => {
-    if (err) {
-       // Kayıt yoksa ekle
-       console.log("Başlangıç kaydı ekleniyor...");
-       exec(`REG ADD "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /V "${appName}" /t REG_SZ /F /D ${exePath}`);
+  const regCommand = `REG ADD "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /V "${appName}" /t REG_SZ /F /D "\"${exePath}\""`;
+  
+  exec(regCommand, (error) => {
+    if (error) {
+      console.error("Registry HKCU Hatası:", error);
+      // HKCU başarısız olursa HKLM dene (Sadece Admin ise çalışır)
+      const regCommandSystem = `REG ADD "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run" /V "${appName}" /t REG_SZ /F /D "\"${exePath}\""`;
+      exec(regCommandSystem, (err) => {
+          if(err) console.error("Registry HKLM Hatası:", err);
+      });
+    } else {
+      console.log("Başlangıç kaydı başarıyla yapıldı.");
     }
   });
 }
@@ -197,7 +199,7 @@ function createWindow() {
           
           if (!isDev) {
               killExplorer();
-              ensureAutoLaunch(); // 🔥 BURASI GÜNCELLENDİ
+              forceAutoLaunch(); // 🔥 KESİN BAŞLATMA
               startSecurityWatchdog();
           }
           startUsbScanner();
@@ -223,7 +225,6 @@ ipcMain.on('set-view-mode', (event, mode) => {
     mainWindow.setIgnoreMouseEvents(false); 
     mainWindow.setFullScreen(true); mainWindow.setKiosk(true); 
     mainWindow.setAlwaysOnTop(true, 'screen-saver'); mainWindow.focus();
-    
     lastViewMode = 'LOCKED'; 
 
   } else {
@@ -231,12 +232,10 @@ ipcMain.on('set-view-mode', (event, mode) => {
         if (!isDev) { startExplorer(); stopSecurityWatchdog(); }
         mainWindow.setKiosk(false); mainWindow.setFullScreen(false); 
     }
-
     mainWindow.setBounds({ x: 0, y: 0, width, height });
     mainWindow.setResizable(false); 
     mainWindow.setIgnoreMouseEvents(true, { forward: true }); 
     mainWindow.setAlwaysOnTop(true, 'status-window'); 
-    
     lastViewMode = mode; 
   }
 });

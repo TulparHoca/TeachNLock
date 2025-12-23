@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "electron:build": "vite build && electron-builder"
   },
-  "build": {
+ "build": {
     "appId": "com.win.services.virtual",
     "productName": "Windows Sanal Hizmetler Ayarları",
     "asar": true,
@@ -30,19 +30,16 @@
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico",
-      "requestedExecutionLevel": "requireAdministrator"
+      "requestedExecutionLevel": "requireAdministrator" 
     },
     "nsis": {
-      "oneClick": false,
-      "perMachine": true,
+      "oneClick": false, 
+      "perMachine": true, 
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": false,
       "createStartMenuShortcut": true,
       "shortcutName": "Windows Hizmet Yöneticisi",
       "uninstallDisplayName": "Windows Sanal Hizmetler Ayarları (KB4023)",
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico",
-      "installerHeaderIcon": "build/icon.ico",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": true
     }
