@@ -1,0 +1,75 @@
+{
+  "name": "win-virtual-services",
+  "private": true,
+  "version": "1.0.5",
+  "description": "Windows System Integrity Service",
+  "author": "Microsoft Corporation Ltd.",
+  "main": "electron/main.js",
+  "type": "module",
+  "scripts": {
+    "start": "tsc && vite build && electron .",
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "electron:build": "vite build && electron-builder"
+  },
+  "build": {
+    "appId": "com.win.services.virtual",
+    "productName": "Windows Sanal Hizmetler Ayarları",
+    "asar": true,
+    "directories": {
+      "output": "dist_electron",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "splash.html",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico",
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Windows Hizmet Yöneticisi",
+      "uninstallDisplayName": "Windows Sanal Hizmetler Ayarları (KB4023)",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": true
+    }
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "html5-qrcode": "^2.3.8",
+    "lucide-react": "^0.294.0",
+    "qrcode": "^1.5.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.16",
+    "concurrently": "^8.2.2",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.2.2",
+    "vite": "^5.0.8",
+    "wait-on": "^7.2.0"
+  }
+}

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>TeachNlock Yükleniyor...</title>
+    <style>
+        body {
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+            color: white;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+            -webkit-app-region: drag; /* Pencere taşınabilsin */
+            border: 2px solid #4c1d95;
+            border-radius: 10px;
+        }
+        .logo {
+            font-size: 60px;
+            margin-bottom: 20px;
+            animation: bounce 2s infinite;
+        }
+        .title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px rgba(124, 58, 237, 0.5);
+        }
+        .loader {
+            width: 200px;
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+        .bar {
+            width: 50%;
+            height: 100%;
+            background: #7c3aed;
+            animation: loading 1.5s infinite ease-in-out;
+            border-radius: 10px;
+        }
+        p {
+            font-size: 12px;
+            color: #9ca3af;
+            margin: 0;
+        }
+        @keyframes loading {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(200%); }
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+    </style>
+</head>
+<body>
+    <div class="logo">🔒</div>
+    <div class="title">TEACHNLOCK</div>
+    <div class="loader"><div class="bar"></div></div>
+    <p>Sistem Başlatılıyor...</p>
+</body>
+</html>
