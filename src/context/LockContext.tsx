@@ -43,6 +43,10 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
   const [scheduleStatus, setScheduleStatus] = useState("Serbest Zaman");
 
   const lastCommandTime = useRef<number>(0);
+  
+  // 🔥 DÜZELTME: Son gelen sistem komutunu hafızada tutuyoruz
+  // Böylece duyuru değiştiğinde eski komut yüzünden PC kapanmayacak.
+  const lastSystemCommandRef = useRef<string | null>(null);
 
   const updateLockState = (locked: boolean) => {
       setIsLocked(locked);
@@ -60,8 +64,18 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
       }
       setMachineId(currentMachineId);
 
+      // 1. Tahta bilgisini çek
       const { data: existingBoard } = await supabase
         .from('boards').select('name, announcement, is_locked').eq('machine_id', currentMachineId).single();
+
+      // 2. 🔥 Okul ayarlarını çekip MEVCUT KOMUTU hafızaya al (ki açılışta patlamasın)
+      const { data: schoolSettings } = await supabase
+        .from('school_settings').select('system_command, announcement').eq('id', 1).single();
+      
+      if (schoolSettings) {
+          lastSystemCommandRef.current = schoolSettings.system_command; // Mevcut komutu "görüldü" olarak işaretle
+          if (schoolSettings.announcement) setAnnouncement(schoolSettings.announcement);
+      }
 
       if (!existingBoard) {
         await supabase.from('boards').upsert({ 
@@ -76,6 +90,7 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
         }).eq('machine_id', currentMachineId);
         
         updateLockState(existingBoard.is_locked);
+        // Tahtaya özel duyuru varsa onu kullan, yoksa genel duyuru zaten schoolSettings'den geldi
         if (existingBoard.announcement) setAnnouncement(existingBoard.announcement);
       }
 
@@ -93,38 +108,21 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  // --- 🔥 AKILLI DERS PROGRAMI GÜNCELLEMESİ (DÜZELTİLDİ) ---
+  // --- AKILLI DERS PROGRAMI ---
   useEffect(() => {
     const fetchSchedule = async () => {
         try {
             const { data, error } = await supabase.rpc('get_current_lecture_status');
-            
             if (!error && data) {
                 let text = data.name; 
-                
                 if (data.status === 'IN_LECTURE' || data.status === 'BREAK_TIME') {
                     const kalan = Math.ceil(data.remaining_minutes);
-                    
-                    // 🔥 MANTIK FİLTRESİ: 
-                    // Eğer kalan süre 90 dakikadan fazlaysa, bu teneffüs değil gece arasıdır.
-                    // O yüzden sayaç gösterme, "Serbest Zaman" moduna geç.
-                    if (kalan > 90) {
-                        setScheduleStatus("Serbest Zaman");
-                    } else {
-                        text += ` (Kalan: ${kalan} dk)`;
-                        setScheduleStatus(text);
-                    }
-                } else {
-                    setScheduleStatus(text);
-                }
-            } else {
-                setScheduleStatus("Serbest Zaman");
-            }
-        } catch (e) {
-            setScheduleStatus("Serbest Zaman");
-        }
+                    if (kalan > 90) { setScheduleStatus("Serbest Zaman"); } 
+                    else { text += ` (Kalan: ${kalan} dk)`; setScheduleStatus(text); }
+                } else { setScheduleStatus(text); }
+            } else { setScheduleStatus("Serbest Zaman"); }
+        } catch (e) { setScheduleStatus("Serbest Zaman"); }
     };
-    
     fetchSchedule(); 
     const interval = setInterval(fetchSchedule, 60 * 1000); 
     return () => clearInterval(interval);
@@ -170,11 +168,23 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
           }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'school_settings', filter: 'id=eq.1' }, (payload: any) => {
-          setAnnouncement(payload.new.announcement || ""); 
-          if (payload.new.announcement) { playSoundSafe(sfx.file); }
-          if (payload.new.system_command === 'SHUTDOWN_ALL') { 
-              playSoundSafe(sfx.alarm); 
-              setTimeout(() => { window.electron?.shutdownPC(); }, 3000); 
+          // Duyuru güncellemesi
+          if (payload.new.announcement !== undefined) {
+             setAnnouncement(payload.new.announcement || ""); 
+             playSoundSafe(sfx.file); 
+          }
+
+          // 🔥 KRİTİK DÜZELTME: Sadece KOMUT DEĞİŞTİYSE çalıştır
+          const newCommand = payload.new.system_command;
+          
+          if (newCommand && newCommand !== lastSystemCommandRef.current) {
+              if (newCommand === 'SHUTDOWN_ALL') { 
+                  playSoundSafe(sfx.alarm); 
+                  // 3 saniye bekle ki sesi duyulsun
+                  setTimeout(() => { window.electron?.shutdownPC(); }, 3000); 
+              }
+              // Komutu işledik, hafızaya at
+              lastSystemCommandRef.current = newCommand;
           }
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'files', filter: `session_id=eq.${sessionId}` }, (payload: any) => {

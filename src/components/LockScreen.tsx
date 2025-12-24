@@ -221,7 +221,7 @@ export default function LockScreen() {
     return <CloudRain size={40} className="text-cyan-400 drop-shadow-[0_0_10px_rgba(34,211,238,0.5)]" />;
   };
 
-  // ACİL DURUM KODU (1453 + Tarih)
+  // ACİL DURUM KODU
   const handleEmergency = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setEmergencyInput(val);
@@ -239,7 +239,6 @@ export default function LockScreen() {
     }
   };
 
-  // 🔥 GÜNCELLENDİ: ARTIK SORU SORMAZ, DİREKT KAPATIR
   const handleSystemShutdown = () => {
       window.electron?.shutdownPC();
   };
@@ -278,9 +277,9 @@ export default function LockScreen() {
         <div className="relative bg-slate-900/60 backdrop-blur-xl p-6 rounded-3xl border border-cyan-500/30 shadow-[0_0_50px_-10px_rgba(6,182,212,0.3)] flex flex-col items-center group transition-all duration-500 hover:shadow-[0_0_70px_-10px_rgba(6,182,212,0.5)]">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-1 bg-cyan-500 blur-md opacity-50 group-hover:opacity-100 transition-opacity duration-500"></div>
           
-          {/* 🔥 QR ÜSTÜNDEKİ DURUM HAPI */}
+          {/* 🔥 DÜZELTME: -top-6 YERİNE -top-14 YAPILDI (DAHA YUKARI ÇEKİLDİ) */}
           <div className={`
-             absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap px-6 py-2.5 rounded-full border backdrop-blur-md shadow-lg flex items-center gap-3 animate-in zoom-in duration-500 z-20 
+             absolute -top-14 left-1/2 -translate-x-1/2 whitespace-nowrap px-6 py-2.5 rounded-full border backdrop-blur-md shadow-lg flex items-center gap-3 animate-in zoom-in duration-500 z-20 
              ${statusBg}
           `}>
              <div className={`w-2.5 h-2.5 rounded-full animate-pulse ${isFreeTime ? 'bg-emerald-400 shadow-[0_0_10px_#34d399]' : 'bg-amber-400 shadow-[0_0_10px_#fbbf24]'}`}></div>
