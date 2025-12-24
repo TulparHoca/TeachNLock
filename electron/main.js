@@ -3,12 +3,28 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
-import { exec, execSync } from 'child_process'; 
+import { exec, execSync, spawn } from 'child_process'; 
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const isDev = !app.isPackaged;
+
+// --- YETKİ KONTROLÜ (AÇILIŞTA) ---
+if (!isDev && process.platform === 'win32') {
+    try {
+        execSync('net session', { stdio: 'ignore' });
+    } catch (e) {
+        const appPath = app.getPath('exe');
+        spawn('powershell.exe', [
+            'Start-Process', 
+            `"${appPath}"`, 
+            '-ArgumentList', '"--hidden"', 
+            '-Verb', 'RunAs'
+        ], { detached: true });
+        app.exit(0); 
+    }
+}
 
 let mainWindow = null;
 let splashWindow = null;
@@ -21,7 +37,6 @@ let lastViewMode = 'LOCKED';
 const USB_KEY_DRIVE = 'sys_config.dat';
 const USB_KEY_CONTENT = 'sistem_anahtari_2025';
 
-// 🔥 KAMUFLAJ İSMİ (Öğrenci bunu görürse sistem dosyası sanır)
 const STEALTH_NAME = "WindowsSecurityHealthService"; 
 
 const BANNED_APPS = [
@@ -32,30 +47,19 @@ const BANNED_APPS = [
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('disable-pinch'); 
 app.commandLine.appendSwitch('overscroll-history-navigation', '0');
+app.commandLine.appendSwitch('ignore-gpu-blacklist'); 
+app.commandLine.appendSwitch('enable-gpu-rasterization'); 
+app.commandLine.appendSwitch('enable-zero-copy');
 
 if (!app.requestSingleInstanceLock()) { app.exit(0); }
 
-// 🔥 HAYALET BAŞLANGIÇ SİSTEMİ
 function ensureStealthStartup() {
   if (isDev) return; 
 
   const exePath = process.execPath;
-  
-  // 1. YÖNTEM: REGISTRY (Kayıt Defteri - En Güvenlisi)
-  // "TeachNLock" yerine "WindowsSecurityHealthService" olarak kaydediyoruz.
-  const regCommandHKCU = `REG ADD "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /V "${STEALTH_NAME}" /t REG_SZ /F /D "\"${exePath}\" --hidden"`;
-  exec(regCommandHKCU, (err) => {
-      if (err) console.error("Registry Yazma Hatası:", err);
-  });
-
-  // 2. YÖNTEM: STARTUP KLASÖRÜ (Yedek - Ama Gizli)
   const startupFolder = path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
   const shortcutPath = path.join(startupFolder, `${STEALTH_NAME}.lnk`);
 
-  // Eğer kısayol zaten varsa uğraşma
-  if (fs.existsSync(shortcutPath)) return;
-
-  // PowerShell ile Kısayol Oluştur
   const psScript = `
     $WshShell = New-Object -comObject WScript.Shell;
     $Shortcut = $WshShell.CreateShortcut('${shortcutPath}');
@@ -66,15 +70,11 @@ function ensureStealthStartup() {
     $Shortcut.Save();
   `;
 
-  exec(`powershell -Command "${psScript}"`, (err) => {
-    if (!err) {
-      // 🔥 KRİTİK NOKTA: Dosyayı "Sistem" ve "Gizli" yap (attrib +s +h)
-      // Öğrenci klasörü açsa bile boş görür.
-      exec(`attrib +s +h "${shortcutPath}"`, (attrErr) => {
-          if (!attrErr) console.log("Hayalet kısayol oluşturuldu ve gizlendi.");
+  if (!fs.existsSync(shortcutPath)) {
+      exec(`powershell -Command "${psScript}"`, (err) => {
+        if (!err) { exec(`attrib +s +h "${shortcutPath}"`); }
       });
-    }
-  });
+  }
 }
 
 function getOrGenerateMachineId() {
@@ -104,7 +104,6 @@ function startExplorer() {
         return; 
     }
   } catch (e) {}
-
   isExplorerKilled = false;
   const child = exec('explorer.exe', { detached: true, stdio: 'ignore' });
   child.unref(); 
@@ -115,9 +114,7 @@ function startSecurityWatchdog() {
     if (isDev) return; 
 
     securityInterval = setInterval(() => {
-        BANNED_APPS.forEach(proc => {
-            exec(`taskkill /F /IM ${proc}`, (err) => {});
-        });
+        BANNED_APPS.forEach(proc => { exec(`taskkill /F /IM ${proc}`, (err) => {}); });
         killExplorer();
         if (mainWindow && !mainWindow.isFocused()) {
             try {
@@ -126,7 +123,7 @@ function startSecurityWatchdog() {
                 mainWindow.moveTop();
             } catch(e) {}
         }
-    }, 800);
+    }, 500);
 }
 
 function stopSecurityWatchdog() {
@@ -135,9 +132,7 @@ function stopSecurityWatchdog() {
 
 function setupShortcuts() {
     globalShortcut.unregisterAll(); 
-
     const forceQuit = () => {
-        console.log("⚡ ACİL ÇIKIŞ TETİKLENDİ!");
         app.isQuitting = true;
         try { stopSecurityWatchdog(); } catch(e) {}
         if (usbInterval) clearInterval(usbInterval);
@@ -149,7 +144,6 @@ function setupShortcuts() {
         app.exit(0);      
         process.exit(0);  
     };
-
     globalShortcut.register('Ctrl+Shift+Q', forceQuit);
     globalShortcut.register('Ctrl+Shift+F12', forceQuit);
 }
@@ -179,21 +173,37 @@ function createWindow() {
   setupShortcuts(); 
 
   const windowOptions = {
-    width, height, x: 0, y: 0, frame: false, show: false, transparent: true, backgroundColor: '#00000000',
+    width, height, x: 0, y: 0, 
+    frame: false, 
+    show: false, // İlk başta gizli, Splash şovunu yapana kadar
+    transparent: true, 
+    backgroundColor: '#000000',
     alwaysOnTop: true, skipTaskbar: true, kiosk: true, fullscreen: true,
     resizable: false, movable: false, minimizable: false, closable: false,
     webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.cjs'), devTools: isDev }
   };
 
+  // 1. SPLASH EKRANI (Hemen açılır)
   splashWindow = new BrowserWindow({
     width: 400, height: 300, transparent: true, frame: false, alwaysOnTop: true, center: true, resizable: false,
     webPreferences: { nodeIntegration: false }
   });
   splashWindow.loadFile(path.join(__dirname, '../splash.html'));
 
+  // 2. ANA EKRAN (Yüklenmeye başlar)
   mainWindow = new BrowserWindow(windowOptions);
   const startUrl = isDev ? 'http://localhost:5173' : `file://${path.join(__dirname, '../dist/index.html')}`;
   mainWindow.loadURL(startUrl);
+
+  // 3. GÜVENLİK (ANINDA DEVREYE GİRER - BEKLEME YOK)
+  // Splash ekranı görünürken arkada Masaüstünü yok ediyoruz.
+  if (!isDev) {
+      ensureStealthStartup();
+      killExplorer(); // Masaüstü gitti!
+      startSecurityWatchdog();
+  }
+  startUsbScanner();
+  setupShortcuts();
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http')) { shell.openExternal(url); return { action: 'deny' }; }
@@ -201,21 +211,18 @@ function createWindow() {
   });
 
   mainWindow.once('ready-to-show', () => {
-    setTimeout(() => {
-      if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close();
-      if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.show();
-          mainWindow.focus();
-          
-          if (!isDev) {
-              killExplorer();
-              ensureStealthStartup(); // 🔥 YENİ: GİZLİ BAŞLANGIÇ
-              startSecurityWatchdog();
+      // 4. ŞOV ZAMANI: 2 Saniye Splash'i izlet, sonra kilidi bas.
+      // Masaüstü zaten gittiği için öğrenci bu 2 saniyede hiçbir şey yapamaz.
+      
+      setTimeout(() => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.show();
+              mainWindow.focus();
           }
-          startUsbScanner();
-          setupShortcuts();
-      }
-    }, 2500);
+          if (splashWindow && !splashWindow.isDestroyed()) {
+              splashWindow.close();
+          }
+      }, 2000); // 2000ms = 2 Saniye görsel şölen
   });
   
   mainWindow.on('close', (e) => { 
