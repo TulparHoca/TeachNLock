@@ -1,62 +1,48 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLock } from '../context/LockContext';
-import { supabase } from '../db'; // 🔥 Veritabanı bağlantısı eklendi (Sayaç için)
+import { supabase } from '../db'; 
 import { Lock, Unlock, FolderOpen, ChevronDown, FileText, ExternalLink, Image, Video, Download, X, Play } from 'lucide-react';
 
 export default function TeacherToolbar() {
-  // 🔥 GEREKLİ VERİLERİ ÇEKTİK
   const { lock, files, announcement, teacherName, scheduleStatus, sessionId } = useLock();
   
   const [viewMode, setViewMode] = useState<'NORMAL' | 'EXPANDED' | 'MINI'>('MINI');
-  
-  // 🔥 SAYAÇ BAŞLANGICI 0 (Veritabanından dolacak)
   const [secondsLeft, setSecondsLeft] = useState(0);
   
+  const [dbTeacherName, setDbTeacherName] = useState("");
   const [miniPos, setMiniPos] = useState({ x: window.innerWidth - 100, y: 100 });
   const [selectedMedia, setSelectedMedia] = useState<any | null>(null);
   const [lastSeenCount, setLastSeenCount] = useState(0);
 
-  // Sürükleme Referansları
   const isDragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0 });
   const initialPos = useRef({ x: 0, y: 0 });
   const hasMoved = useRef(false);
 
-  // 🔥 1. AKILLI SAYAÇ MANTIĞI (Veritabanı Odaklı)
   useEffect(() => {
     let interval: any;
-
-    const fetchDurationAndStartTimer = async () => {
+    const fetchSessionData = async () => {
         if (!sessionId) return;
-
-        // Veritabanından oturumun ne zaman başladığını ve süresini çek
         const { data } = await supabase
-            .from('sessions')
-            .select('created_at, duration')
-            .eq('qr_code', sessionId)
-            .single();
-
+            .from('sessions').select('created_at, duration, teacher_name').eq('qr_code', sessionId).single();
         if (data) {
+            if (data.teacher_name) setDbTeacherName(data.teacher_name);
             const startTime = new Date(data.created_at).getTime();
-            const durationMinutes = data.duration || 40; // Veri yoksa varsayılan 40
+            const durationMinutes = data.duration || 40; 
             const endTime = startTime + (durationMinutes * 60 * 1000);
-
-            // Sayaç Fonksiyonu
             const updateTimer = () => {
                 const now = Date.now();
                 const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
                 setSecondsLeft(remaining);
+                if (remaining === 0) { clearInterval(interval); lock(); }
             };
-
-            updateTimer(); // İlk açılışta hemen güncelle
-            interval = setInterval(updateTimer, 1000); // Her saniye güncelle
+            updateTimer(); 
+            interval = setInterval(updateTimer, 1000); 
         }
     };
-
-    fetchDurationAndStartTimer();
-
+    fetchSessionData();
     return () => { if (interval) clearInterval(interval); };
-  }, [sessionId]);
+  }, [sessionId, lock]);
 
   const formatTime = (totalSeconds: number) => {
     const m = Math.floor(totalSeconds / 60);
@@ -64,23 +50,25 @@ export default function TeacherToolbar() {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  // Pencere Modu Ayarları
+  // 🔥 DÜZELTİLEN KISIM BURASI (Tıklama Sorunu)
   useEffect(() => {
     if (viewMode === 'NORMAL') window.electron?.setViewMode('TOOLBAR');
     if (viewMode === 'EXPANDED') window.electron?.setViewMode('EXPANDED');
-    if (viewMode === 'MINI') window.electron?.setViewMode('MINI');
+    
+    if (viewMode === 'MINI') {
+        window.electron?.setViewMode('MINI');
+        // Mini modda arkaya tıklamayı aktif et
+        window.electron?.setIgnoreMouse(true); 
+    }
 
     if (viewMode !== 'MINI') window.electron?.setIgnoreMouse(false);
     if (viewMode === 'EXPANDED') setLastSeenCount(files.length);
   }, [viewMode, files.length]);
 
   const unreadCount = Math.max(0, files.length - lastSeenCount);
-
-  // Mouse Davranışları
   const handleMouseEnter = () => window.electron?.setIgnoreMouse(false);
   const handleMouseLeave = () => { if (!isDragging.current && !selectedMedia) window.electron?.setIgnoreMouse(true); };
 
-  // Sürükleme Mantığı
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     isDragging.current = true;
@@ -123,7 +111,8 @@ export default function TeacherToolbar() {
 
   const closeMedia = () => { setSelectedMedia(null); if (viewMode === 'MINI') window.electron?.setIgnoreMouse(true); };
 
-  // --- GÖRÜNÜM 1: MİNİ MOD ---
+  const displayName = teacherName || dbTeacherName || 'Misafir Öğretmen';
+
   if (viewMode === 'MINI') {
     return (
       <>
@@ -138,7 +127,6 @@ export default function TeacherToolbar() {
     );
   }
 
-  // --- GÖRÜNÜM 2: NORMAL & EXPANDED MOD ---
   return (
     <>
       {selectedMedia && <MediaViewer file={selectedMedia} onClose={closeMedia} />}
@@ -148,8 +136,7 @@ export default function TeacherToolbar() {
             <div className="flex items-center gap-3 select-none">
                <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center"><Unlock size={20}/></div>
                <div>
-                   {/* 🔥 DİNAMİK İSİM VE DERS BİLGİSİ */}
-                   <h2 className="font-bold text-lg leading-none">{teacherName || 'Misafir Öğretmen'}</h2>
+                   <h2 className="font-bold text-lg leading-none">{displayName}</h2>
                    <span className="text-xs text-green-400 font-mono tracking-wide mt-1 block">{scheduleStatus || 'Sistem Aktif'}</span>
                </div>
             </div>
@@ -159,7 +146,6 @@ export default function TeacherToolbar() {
                <button onClick={() => lock()} className="p-3 bg-red-500/20 border border-red-500 text-red-400 rounded-lg hover:bg-red-500 hover:text-white flex items-center gap-2 font-bold hover:brightness-110 active:scale-95"><Lock size={18}/></button>
             </div>
           </div>
-          {/* 🔥 AKILLI SAYAÇ GÖSTERİMİ */}
           <div className="mt-2 bg-black/40 p-3 rounded-lg border border-white/10 flex items-center justify-center select-none"><span className="font-mono text-4xl font-bold text-yellow-400 tracking-wider drop-shadow-md">{formatTime(secondsLeft)}</span></div>
         </div>
         

@@ -1,16 +1,15 @@
-import { app, BrowserWindow, ipcMain, screen, globalShortcut, shell, net, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, screen, globalShortcut, shell, net } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
-import { exec, execSync, spawn } from 'child_process'; 
+import { exec, execSync } from 'child_process'; 
 
-// --- KRİTİK DÜZELTME 1: Çalışma Dizinini Sabitle ---
-// Görev Zamanlayıcı System32'de başlatsa bile uygulamanın kendi klasörünü bulmasını sağlar.
+// --- 1. ÇALIŞMA DİZİNİ DÜZELTME ---
 try {
     const exeDir = path.dirname(app.getPath('exe'));
     process.chdir(exeDir);
-} catch (e) { console.error("Dizin değiştirilemedi:", e); }
+} catch (e) { }
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,92 +20,113 @@ let splashWindow = null;
 let usbInterval = null;
 let securityInterval = null; 
 let machineId = '';
-let isExplorerKilled = false; 
 let lastViewMode = 'LOCKED'; 
 
 const USB_KEY_DRIVE = 'sys_config.dat';
 const USB_KEY_CONTENT = 'sistem_anahtari_2025';
 const BANNED_APPS = ['taskmgr.exe', 'cmd.exe', 'powershell.exe', 'regedit.exe', 'magnify.exe', 'narrator.exe', 'osk.exe'];
 
-// Performans ve Politika Ayarları
-app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
-app.commandLine.appendSwitch('disable-pinch'); 
-app.commandLine.appendSwitch('overscroll-history-navigation', '0');
-app.commandLine.appendSwitch('ignore-gpu-blacklist'); 
-app.commandLine.appendSwitch('enable-gpu-rasterization'); 
-app.commandLine.appendSwitch('enable-zero-copy');
-
+// Tekil Uygulama Kilidi
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) { app.exit(0); }
 
-function getOrGenerateMachineId() {
-  const userDataPath = app.getPath('userData');
-  const idFilePath = path.join(userDataPath, 'device_id.json');
-  try {
-    if (fs.existsSync(idFilePath)) {
-      return JSON.parse(fs.readFileSync(idFilePath, 'utf-8')).id;
-    } else {
-      const newId = crypto.randomUUID();
-      fs.writeFileSync(idFilePath, JSON.stringify({ id: newId }));
-      return newId;
-    }
-  } catch { return 'FALLBACK_ID_' + Date.now(); }
-}
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+app.commandLine.appendSwitch('disable-pinch'); 
+app.commandLine.appendSwitch('ignore-gpu-blacklist'); 
 
+// --- KRİTİK FONKSİYONLAR ---
+
+// 1. EXPLORER KAPATMA
 function killExplorer() {
-  if (isExplorerKilled) return;
-  exec('taskkill /F /IM explorer.exe', (err) => { if (!err) isExplorerKilled = true; });
+  if (isDev) return;
+  exec('taskkill /F /IM explorer.exe', () => {});
 }
 
+// 2. EXPLORER BAŞLATMA (DÜZELTİLDİ: Pencere açılma sorunu fix)
 function startExplorer() {
-  try {
-    const stdout = execSync('tasklist /FI "IMAGENAME eq explorer.exe" /NH').toString();
-    if (stdout.toLowerCase().includes('explorer.exe')) { isExplorerKilled = false; return; }
-  } catch (e) {}
-  isExplorerKilled = false;
-  const child = exec('explorer.exe', { detached: true, stdio: 'ignore' });
-  child.unref(); 
+  if (isDev) return;
+
+  // Önce güvenlik bekçisini kesin durdur
+  stopSecurityWatchdog();
+
+  // Emin olmak için önce öldür, sonra başlat
+  exec('taskkill /F /IM explorer.exe', () => {
+      setTimeout(() => {
+         console.log("Masaüstü başlatılıyor...");
+         // 🔥 KRİTİK DÜZELTME: cwd (Çalışma Dizini) C:\Windows yapıldı.
+         // Bu sayede "Dosya Gezgini Penceresi" yerine "Taskbar" gelir.
+         const winDir = process.env.windir || 'C:\\Windows';
+         const child = exec('explorer.exe', { 
+             cwd: winDir, 
+             detached: true, 
+             stdio: 'ignore' 
+         });
+         child.unref(); 
+      }, 500); // Yarım saniye bekle ki Windows nefes alsın
+  });
 }
 
+// 3. GÜVENLİK BEKÇİSİ
 function startSecurityWatchdog() {
     if (securityInterval) clearInterval(securityInterval);
     if (isDev) return; 
+    
     securityInterval = setInterval(() => {
-        BANNED_APPS.forEach(proc => { exec(`taskkill /F /IM ${proc}`, (err) => {}); });
-        killExplorer();
-        // Pencere odağını kaybettiyse geri al (Kiosk Koruma)
-        if (mainWindow && !mainWindow.isFocused()) {
-            try {
-                mainWindow.setAlwaysOnTop(true, 'screen-saver');
-                mainWindow.focus();
-                mainWindow.moveTop();
-            } catch(e) {}
+        BANNED_APPS.forEach(proc => exec(`taskkill /F /IM ${proc}`, () => {}));
+        
+        // Explorer geri geldiyse tekrar vur
+        exec('tasklist /FI "IMAGENAME eq explorer.exe" /NH', (err, stdout) => {
+            if (stdout && stdout.toLowerCase().includes('explorer.exe')) {
+                killExplorer();
+            }
+        });
+
+        // Pencereyi öne zorla
+        if (mainWindow && !mainWindow.isDestroyed()) {
+             if (!mainWindow.isAlwaysOnTop()) mainWindow.setAlwaysOnTop(true, 'screen-saver');
+             mainWindow.moveTop();
+             mainWindow.focus();
         }
-    }, 500);
+    }, 1000);
 }
 
-function stopSecurityWatchdog() { if (securityInterval) clearInterval(securityInterval); }
-
-function setupShortcuts() {
-    globalShortcut.unregisterAll(); 
-    const forceQuit = () => {
-        app.isQuitting = true;
-        try { stopSecurityWatchdog(); } catch(e) {}
-        if (usbInterval) clearInterval(usbInterval);
-        try { startExplorer(); } catch(e) {}
-        try {
-            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
-            if (splashWindow && !splashWindow.isDestroyed()) splashWindow.destroy();
-        } catch(e) {}
-        setTimeout(() => { app.exit(0); process.exit(0); }, 1000);
-    };
-    globalShortcut.register('Ctrl+Shift+Q', forceQuit);
-    globalShortcut.register('Ctrl+Shift+F12', forceQuit);
+function stopSecurityWatchdog() { 
+    if (securityInterval) {
+        clearInterval(securityInterval);
+        securityInterval = null;
+    }
 }
 
-ipcMain.handle('shutdown-pc', () => { exec('shutdown /s /f /t 0'); });
-ipcMain.handle('get-machine-id', () => machineId);
-ipcMain.on('quit-app', () => { app.isQuitting = true; startExplorer(); app.exit(0); });
+// 4. ACİL ÇIKIŞ (KILLSWITCH)
+function emergencyExit() {
+    console.log("💀 ACİL ÇIKIŞ...");
+    stopSecurityWatchdog();
+    if (usbInterval) clearInterval(usbInterval);
+    
+    // Explorer'ı güvenli şekilde başlat
+    startExplorer();
+    
+    if (mainWindow) mainWindow.destroy();
+    if (splashWindow) splashWindow.destroy();
+    
+    setTimeout(() => { app.quit(); process.exit(0); }, 1000);
+}
+
+// --- IPC HANDLERS ---
+
+ipcMain.handle('get-machine-id', () => {
+    const userDataPath = app.getPath('userData');
+    const idFilePath = path.join(userDataPath, 'device_id.json');
+    try {
+        if (fs.existsSync(idFilePath)) return JSON.parse(fs.readFileSync(idFilePath, 'utf-8')).id;
+        const newId = crypto.randomUUID();
+        fs.writeFileSync(idFilePath, JSON.stringify({ id: newId }));
+        return newId;
+    } catch { return 'FALLBACK_' + Date.now(); }
+});
+
+ipcMain.handle('shutdown-pc', () => exec('shutdown /s /f /t 0'));
+ipcMain.on('quit-app', emergencyExit);
 ipcMain.handle('open-external', (e, url) => shell.openExternal(url));
 
 ipcMain.on('start-update', (event, downloadUrl) => {
@@ -121,28 +141,49 @@ ipcMain.on('start-update', (event, downloadUrl) => {
   request.end();
 });
 
+// 🔥 GÖRÜNÜM VE KİLİT YÖNETİMİ (Burayı Düzelttik)
 ipcMain.on('set-view-mode', (event, mode) => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   
   if (mode === 'LOCKED') {
-    if (!isDev) { killExplorer(); startSecurityWatchdog(); }
-    mainWindow.setBounds({ x: 0, y: 0, width, height });
-    mainWindow.setResizable(false); mainWindow.setIgnoreMouseEvents(false); 
-    mainWindow.setFullScreen(true); mainWindow.setKiosk(true); 
-    mainWindow.setAlwaysOnTop(true, 'screen-saver'); mainWindow.focus();
-    lastViewMode = 'LOCKED'; 
-  } else {
-    // Kilit açıldığında
-    if (lastViewMode === 'LOCKED') {
-        if (!isDev) { startExplorer(); stopSecurityWatchdog(); }
-        mainWindow.setKiosk(false); mainWindow.setFullScreen(false); 
+    // KİLİTLEME MODU
+    if (!isDev) { 
+        killExplorer(); 
+        startSecurityWatchdog(); 
     }
     mainWindow.setBounds({ x: 0, y: 0, width, height });
     mainWindow.setResizable(false); 
-    // Fare olaylarını arkaya (Windows'a) ilet
-    mainWindow.setIgnoreMouseEvents(true, { forward: true }); 
-    mainWindow.setAlwaysOnTop(true, 'status-window'); 
+    mainWindow.setIgnoreMouseEvents(false); 
+    mainWindow.setFullScreen(true); 
+    mainWindow.setKiosk(true); 
+    mainWindow.setAlwaysOnTop(true, 'screen-saver'); 
+    mainWindow.focus();
+    lastViewMode = 'LOCKED'; 
+
+  } else {
+    // KİLİT AÇMA MODU
+    if (lastViewMode === 'LOCKED') {
+        // Önce güvenliği durdur, SONRA Explorer'ı aç
+        if (!isDev) { 
+            stopSecurityWatchdog(); 
+            startExplorer(); 
+        }
+        mainWindow.setKiosk(false); 
+        mainWindow.setFullScreen(false); 
+    }
+
+    mainWindow.setBounds({ x: 0, y: 0, width, height });
+    mainWindow.setResizable(false); 
+    
+    // Mini modda tıklama izni ver
+    if (mode === 'MINI') {
+        mainWindow.setAlwaysOnTop(true, 'floating');
+        mainWindow.setIgnoreMouseEvents(true, { forward: true });
+    } else {
+        mainWindow.setAlwaysOnTop(true, 'status-window');
+        mainWindow.setIgnoreMouseEvents(false);
+    }
     lastViewMode = mode; 
   }
 });
@@ -151,65 +192,62 @@ ipcMain.on('set-ignore-mouse', (event, ignore) => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setIgnoreMouseEvents(ignore, { forward: true });
 });
 
+// --- USB TARAYICI ---
 function startUsbScanner() {
   if (usbInterval) clearInterval(usbInterval);
   usbInterval = setInterval(() => {
-    const drives = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
-    let found = false;
+    const drives = 'DEFGH'.split('');
+    let foundUsbData = null;
     for (const drive of drives) {
       try {
         const p = `${drive}:\\${USB_KEY_DRIVE}`;
-        if (fs.existsSync(p) && fs.readFileSync(p, 'utf-8').includes(USB_KEY_CONTENT)) { found = true; break; }
-      } catch {}
+        if (fs.existsSync(p)) {
+          const fileContent = fs.readFileSync(p, 'utf-8');
+          if (fileContent.includes(USB_KEY_CONTENT)) {
+             try { foundUsbData = JSON.parse(fileContent); } 
+             catch { foundUsbData = { teacher_name: 'Misafir', app_key: USB_KEY_CONTENT }; }
+             break;
+          }
+        }
+      } catch (e) {}
     }
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('usb-status', found ? 'INSERTED' : 'REMOVED');
-  }, 1500);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('usb-status', { status: foundUsbData ? 'INSERTED' : 'REMOVED', data: foundUsbData });
+    }
+  }, 1000);
 }
 
-function checkAdminAndLaunch() {
-    if (isDev || process.platform !== 'win32') { createWindow(); return; }
-    try {
-        execSync('net session', { stdio: 'ignore' });
-        createWindow();
-    } catch (e) {
-        // Zaten manifest ile admin istiyoruz ama yine de güvenlik
-        app.quit();
-    }
-}
-
+// --- PENCERE OLUŞTURMA ---
 function createWindow() {
-  machineId = getOrGenerateMachineId();
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  setupShortcuts(); 
+  machineId = 'DEV_ID'; 
+  try { machineId = ipcMain.emit('get-machine-id'); } catch(e){}
   
-  // Pencere Ayarları
-  const windowOptions = {
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  
+  // Kısayollar: Ready olduktan sonra tanımlamak daha güvenli
+  globalShortcut.register('Ctrl+Shift+Q', emergencyExit);
+  globalShortcut.register('Ctrl+Shift+F12', emergencyExit);
+
+  splashWindow = new BrowserWindow({ 
+    width: 400, height: 300, transparent: true, frame: false, alwaysOnTop: true, center: true, 
+    type: 'screen-saver', webPreferences: { nodeIntegration: false }
+  });
+  splashWindow.loadFile(path.join(__dirname, '../splash.html')).catch(()=>{});
+
+  mainWindow = new BrowserWindow({
     width, height, x: 0, y: 0, frame: false, show: false, transparent: true, backgroundColor: '#00000000', 
-    alwaysOnTop: true, skipTaskbar: true, kiosk: true, fullscreen: true, 
-    resizable: false, movable: false, minimizable: false, closable: false,
-    webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.cjs'), devTools: isDev }
-  };
+    alwaysOnTop: true, skipTaskbar: true, kiosk: true, fullscreen: true,
+    webPreferences: { 
+        nodeIntegration: false, contextIsolation: true, 
+        preload: path.join(__dirname, 'preload.cjs'), devTools: isDev 
+    }
+  });
 
-  splashWindow = new BrowserWindow({ width: 400, height: 300, transparent: true, frame: false, alwaysOnTop: true, center: true, resizable: false, webPreferences: { nodeIntegration: false }});
-  splashWindow.loadFile(path.join(__dirname, '../splash.html'));
-
-  mainWindow = new BrowserWindow(windowOptions);
   const startUrl = isDev ? 'http://localhost:5173' : `file://${path.join(__dirname, '../dist/index.html')}`;
   mainWindow.loadURL(startUrl);
 
-  // --- KRİTİK DÜZELTME 2: GÜVENLİK YAMASI ---
-  // Uygulama yüklendiğinde React tarafındaki eski "açık kilit" hafızasını sil.
-  // Bu sayede bilgisayar yeniden başladığında HER ZAMAN kilitli başlar.
-  mainWindow.webContents.on('did-finish-load', () => {
-      mainWindow.webContents.executeJavaScript('localStorage.clear(); sessionStorage.clear();')
-        .catch(() => {}); // Hata olursa önemseme
-  });
-
   if (!isDev) { killExplorer(); startSecurityWatchdog(); }
   startUsbScanner();
-  setupShortcuts();
-
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => { if (url.startsWith('http')) { shell.openExternal(url); return { action: 'deny' }; } return { action: 'allow' }; });
 
   mainWindow.once('ready-to-show', () => {
       setTimeout(() => {
@@ -217,11 +255,14 @@ function createWindow() {
           if (splashWindow && !splashWindow.isDestroyed()) { splashWindow.close(); }
       }, 2000); 
   });
-  
-  mainWindow.on('close', (e) => { if (!app.isQuitting) { e.preventDefault(); mainWindow.focus(); } });
 }
 
-app.whenReady().then(checkAdminAndLaunch);
-
-app.on('will-quit', () => { globalShortcut.unregisterAll(); if (usbInterval) clearInterval(usbInterval); stopSecurityWatchdog(); });
+app.whenReady().then(() => {
+    // Windows Admin Kontrolü (Opsiyonel)
+    if (process.platform === 'win32') {
+        try { execSync('net session'); } catch (e) {}
+    }
+    createWindow();
+});
+app.on('will-quit', emergencyExit);
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.exit(0); });
