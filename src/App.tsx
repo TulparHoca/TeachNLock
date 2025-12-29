@@ -1,4 +1,6 @@
 import { useLock } from './context/LockContext';
+
+// 👇 HEPSİ SÜSLÜ PARANTEZSİZ OLACAK (Çünkü hepsi export default)
 import LockScreen from './components/LockScreen';
 import TeacherToolbar from './components/TeacherToolbar';
 import SetupScreen from './components/SetupScreen';
@@ -39,8 +41,8 @@ export default function App() {
       </div>
       
       <style>{`
-        .animate-marquee { animation: marquee 25s linear infinite; display: inline-block; padding-left: 100vw; }
-        @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
+        .animate-marquee { animation: marquee 25s linear infinite; display: inline-block; padding-left: 100%; }
+        @keyframes marquee { 0% { transform: translate(0, 0); } 100% { transform: translate(-100%, 0); } }
       `}</style>
     </div>
   );

@@ -1,32 +1,26 @@
 import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { supabase } from '../db';
+import { createClient } from '@supabase/supabase-js';
 
-// Ses Efektleri
+// ⚠️ SUPABASE BİLGİLERİN
+const supabaseUrl = 'https://raawrpvdlduvazxincdy.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJhYXdycHZkbGR1dmF6eGluY2R5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyNjU4NjYsImV4cCI6MjA3OTg0MTg2Nn0.S9Iogzz6rCp-gOy0pa2s8RHYyxEgGmAv6DopNAEbnvE';
+
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: { detectSessionInUrl: false, persistSession: true, autoRefreshToken: true }
+});
+
 const sfx = {
-  unlock: new Audio('sounds/unlock.mp3'), 
-  lock: new Audio('sounds/lock.mp3'),
-  file: new Audio('sounds/file.mp3'),
-  alarm: new Audio('sounds/alarm.mp3')
+  unlock: typeof window !== 'undefined' ? new Audio('./sounds/unlock.mp3') : null, 
+  lock: typeof window !== 'undefined' ? new Audio('./sounds/lock.mp3') : null,
+  file: typeof window !== 'undefined' ? new Audio('./sounds/file.mp3') : null,
+  alarm: typeof window !== 'undefined' ? new Audio('./sounds/alarm.mp3') : null
 };
 
-if (typeof window !== 'undefined') {
-    Object.values(sfx).forEach(sound => { sound.volume = 1.0; sound.load(); });
-}
-
 interface LockContextType {
-  isLocked: boolean;
-  isSetupRequired: boolean;
-  sessionId: string;
-  machineId: string;
-  announcement: string;
-  files: any[];
-  teacherName: string;
-  scheduleStatus: string;
+  isLocked: boolean; isSetupRequired: boolean; sessionId: string; machineId: string; announcement: string; files: any[]; teacherName: string; scheduleStatus: string;
   unlock: (fromRemote?: boolean, teacherNameVal?: string) => void;
   lock: (fromRemote?: boolean) => void;
-  saveBoardName: (name: string) => Promise<void>;
-  markFilesAsRead: () => void;
-  playErrorSound: () => void;
+  saveBoardName: (name: string) => Promise<void>; markFilesAsRead: () => void; playErrorSound: () => void;
 }
 
 const LockContext = createContext<LockContextType | null>(null);
@@ -34,10 +28,7 @@ const LockContext = createContext<LockContextType | null>(null);
 export const LockProvider = ({ children }: { children: ReactNode }) => {
   const [isLocked, setIsLocked] = useState(true);
   const isLockedRef = useRef(true); 
-
-  // Oturumu kim açtı? ('USB' | 'REMOTE' | null)
-  const openedByRef = useRef<'USB' | 'REMOTE' | null>(null);
-
+  
   const [initializing, setInitializing] = useState(true);
   const [isSetupRequired, setIsSetupRequired] = useState(false);
   const [sessionId, setSessionId] = useState('');
@@ -45,19 +36,22 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
   const [announcement, setAnnouncement] = useState("");
   const [files, setFiles] = useState<any[]>([]);
   const [teacherName, setTeacherName] = useState(""); 
-  
   const [scheduleStatus, setScheduleStatus] = useState("SERBEST ZAMAN");
 
   const lastCommandTime = useRef<number>(0);
-  const lastSystemCommandRef = useRef<string | null>(null);
   const sessionIdRef = useRef(''); 
+
+  const playSoundSafe = (audioObj: HTMLAudioElement | null) => { 
+      if (!audioObj) return;
+      try { audioObj.pause(); audioObj.currentTime = 0; audioObj.play().catch(() => {}); } catch (e) {} 
+  };
 
   const updateLockState = (locked: boolean) => {
       setIsLocked(locked);
       isLockedRef.current = locked; 
   };
 
-  // --- 1. SİSTEM BAŞLANGICI ---
+  // 1. BAŞLANGIÇ
   useEffect(() => {
     const initSystem = async () => {
       const newSessionId = self.crypto.randomUUID(); 
@@ -70,185 +64,107 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
       }
       setMachineId(currentMachineId);
 
-      // Veritabanı Kontrolü
-      const { data: existingBoard } = await supabase
-        .from('boards').select('name, announcement, is_locked').eq('machine_id', currentMachineId).single();
-
-      const { data: schoolSettings } = await supabase
-        .from('school_settings').select('system_command, announcement').eq('id', 1).single();
+      const { data: existingBoard } = await supabase.from('boards').select('name, announcement, is_locked').eq('machine_id', currentMachineId).single();
+      const { data: schoolSettings } = await supabase.from('school_settings').select('system_command, announcement').limit(1).single();
       
-      // Global Duyuru ve Komutlar
-      if (schoolSettings) {
-          lastSystemCommandRef.current = schoolSettings.system_command; 
-          if (schoolSettings.announcement) setAnnouncement(schoolSettings.announcement);
-      }
-
+      if (schoolSettings && schoolSettings.announcement) setAnnouncement(schoolSettings.announcement);
+      
       if (!existingBoard) {
-        // Yeni Tahta Kaydı
-        await supabase.from('boards').upsert({ 
-          machine_id: currentMachineId, is_active: true, is_locked: true, last_seen: new Date().toISOString()
-        });
-        setIsSetupRequired(true);
-        updateLockState(true);
+        await supabase.from('boards').upsert({ machine_id: currentMachineId, is_active: true, is_locked: true, last_seen: new Date().toISOString() });
+        setIsSetupRequired(true); updateLockState(true);
       } else {
-        // Mevcut Tahta
         if (!existingBoard.name) setIsSetupRequired(true);
-        
-        // Tahtaya Özel Duyuru Varsa, Globali Ez
         if (existingBoard.announcement) setAnnouncement(existingBoard.announcement);
-
-        // Güvenlik: Başlangıçta veritabanını kilitle
-        await supabase.from('boards').update({ 
-          is_active: true, last_seen: new Date().toISOString(), is_locked: true, lock_command: 'LOCK'
-        }).eq('machine_id', currentMachineId);
-        
+        await supabase.from('boards').update({ is_active: true, last_seen: new Date().toISOString(), is_locked: true, lock_command: 'LOCK' }).eq('machine_id', currentMachineId);
         updateLockState(true);
       }
-
-      await supabase.from('sessions').insert([{ 
-        qr_code: newSessionId, status: 'LOCKED', created_at: new Date().toISOString()
-      }]);
-
+      
+      await supabase.from('sessions').insert([{ qr_code: newSessionId, status: 'LOCKED', created_at: new Date().toISOString() }]);
       setInitializing(false);
     };
-
     initSystem();
   }, []); 
 
-
-  // --- 2. USB ve REALTIME DİNLEYİCİSİ ---
+  // 🔥 2. DEBUG İÇİN GÜÇLENDİRİLMİŞ USB DİNLEYİCİ
   useEffect(() => {
-    // A) USB Dinleyicisi
     if (typeof window !== 'undefined' && (window as any).electron?.onUsbStatus) {
        (window as any).electron.onUsbStatus(async (response: any) => { 
-           
-           // USB ÇIKARILDI -> KİLİTLE
-           if (response?.status === 'REMOVED') {
-               // Sadece oturum USB ile açıldıysa kilitle!
-               if (!isLockedRef.current && openedByRef.current === 'USB') {
-                   lock(false);
-               }
-               return;
-           }
-
-           // USB TAKILDI -> KİLİT AÇ
-           let incomingName = "Misafir Öğretmen";
-           let teacherUsername = "unknown";
-           
-           if (response?.status === 'INSERTED' && response.data) {
-               incomingName = response.data.teacher_name || incomingName;
-               teacherUsername = response.data.teacher_username || teacherUsername;
-           }
+           // USB'den gelen her sinyali konsola yazdır
+           console.log("🔌 USB Sinyali Geldi:", response);
 
            if (response?.status === 'INSERTED') {
-               if (!isLockedRef.current && openedByRef.current === 'USB') return;
-
-               console.log("🔑 USB Anahtar Algılandı:", incomingName);
-               setTeacherName(incomingName);
-
-               if (navigator.onLine && machineId) {
-                   supabase.from('board_logs').insert([{
-                        machine_id: machineId,
-                        teacher_username: teacherUsername,
-                        action_type: 'USB_UNLOCK',
-                        details: `${incomingName} tarafından USB ile fiziksel erişim sağlandı.`
-                   }]).then();
+               console.error("🚨 SUÇLU BULUNDU: Main.js 'USB Takıldı' sinyali gönderiyor!");
+               console.error("🚨 Veri:", response.data);
+               
+               let incomingName = "Misafir Öğretmen"; 
+               if (response.data) incomingName = response.data.teacher_name || incomingName;
+               
+               if (isLockedRef.current) {
+                   console.log("🔓 Kilit Açılıyor (Kaynak: USB)");
+                   unlock(false, incomingName);
                }
-
-               // USB ile açıldığını belirt
-               unlock(false, incomingName, 'USB');
            }
        });
     }
+  }, [machineId]); 
 
-    // B) Supabase Realtime
+  // 🔥 3. DEBUG İÇİN GÜÇLENDİRİLMİŞ REALTIME
+  useEffect(() => {
     if (!sessionId || !machineId) return;
-
-    // Dosyaları çek
+    
     supabase.from('files').select('*').eq('session_id', sessionId).order('created_at', { ascending: false }).then(({ data }) => { if (data) setFiles(data); });
 
     const channel = supabase.channel(`system_sync`)
-      
-      // 1. QR KOD DURUMU (QR İLE AÇMA)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sessions', filter: `qr_code=eq.${sessionId}` }, (payload: any) => {
-          console.log("🔔 Session Update:", payload.new.status); // Debug
+          console.log("☁️ Veritabanı (Session) Güncellemesi:", payload.new);
           
           if (payload.new.status === 'OPEN') {
-              // 🔥 DÜZELTME: QR Sinyali Geldiğinde KİLİDİ AÇ
-              unlock(true, payload.new.teacher_name, 'REMOTE');
+              console.error("🚨 SUÇLU BULUNDU: Veritabanı 'OPEN' emri gönderdi!");
+              unlock(true, payload.new.teacher_name);
           }
-          if (payload.new.status === 'LOCKED') {
-              if (!isLockedRef.current && shouldExecuteCommand()) lock(true);
+          if (payload.new.status === 'LOCKED') { 
+              if (!isLockedRef.current && shouldExecuteCommand()) lock(true); 
           }
       })
-
-      // 2. TAHTA KOMUTLARI VE DUYURU (Boards Tablosu)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'boards' }, (payload: any) => {
-          if (payload.new.machine_id === machineId) {
-             
-             // 🔥 DÜZELTME: DUYURU SİLME (NULL KONTROLÜ)
-             // Payload içinde 'announcement' anahtarı varsa (null olsa bile) işleme al.
-             if (Object.prototype.hasOwnProperty.call(payload.new, 'announcement')) {
-                 const text = payload.new.announcement || ""; // Null ise boş string yap
-                 console.log("📢 Duyuru Güncellendi:", text);
-                 setAnnouncement(text);
-             }
+          console.log("☁️ Veritabanı (Board) Güncellemesi:", payload.new);
 
-             if (payload.new.lock_command === 'UNLOCK' && isLockedRef.current && shouldExecuteCommand()) unlock(true, undefined, 'REMOTE');
+          if (payload.new.machine_id === machineId) {
+             if (payload.new.announcement !== undefined) setAnnouncement(payload.new.announcement || "");
+             
+             if (payload.new.lock_command === 'UNLOCK' && isLockedRef.current && shouldExecuteCommand()) {
+                 console.error("🚨 SUÇLU BULUNDU: Admin Paneli 'UNLOCK' emri gönderdi!");
+                 unlock(true);
+             }
              if (payload.new.lock_command === 'LOCK' && !isLockedRef.current && shouldExecuteCommand()) lock(true);
           }
       })
-
-      // 3. GLOBAL AYARLAR (School Settings)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'school_settings', filter: 'id=eq.1' }, (payload: any) => {
-          // Global duyuru da boş gelebilir
-          if (Object.prototype.hasOwnProperty.call(payload.new, 'announcement')) {
-              setAnnouncement(payload.new.announcement || "");
-          }
-          
-          const newCommand = payload.new.system_command;
-          if (newCommand && newCommand !== lastSystemCommandRef.current) {
-              if (newCommand === 'SHUTDOWN_ALL') { 
-                  playSoundSafe(sfx.alarm); 
-                  setTimeout(() => { (window as any).electron?.shutdownPC(); }, 3000); 
-              }
-              lastSystemCommandRef.current = newCommand;
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'school_settings' }, (payload: any) => {
+          if (payload.new.announcement !== undefined) setAnnouncement(payload.new.announcement || "");
+          if (payload.new.system_command === 'SHUTDOWN_ALL') { 
+              playSoundSafe(sfx.alarm); 
+              if ((window as any).electron) setTimeout(() => { (window as any).electron.shutdownPC(); }, 2000); 
           }
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'files', filter: `session_id=eq.${sessionId}` }, (payload: any) => {
-          setFiles(prev => [payload.new, ...prev]); 
-          playSoundSafe(sfx.file);
+          setFiles(prev => [payload.new, ...prev]); playSoundSafe(sfx.file);
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, [sessionId, machineId]); 
 
-
-  // --- 3. DERS PROGRAMI ---
+  // 4. DERS PROGRAMI
   useEffect(() => {
     const calculateSchedule = async () => {
         try {
-            const today = new Date();
-            const isFriday = today.getDay() === 5;
+            const today = new Date(); const isFriday = today.getDay() === 5;
             const { data: schedule } = await supabase.from('lecture_schedule').select('*').eq('is_friday', isFriday).order('start_time');
             if (!schedule || schedule.length === 0) { setScheduleStatus("SERBEST ZAMAN"); return; }
-            
             const nowStr = today.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
             const currentSlot = schedule.find(s => nowStr >= s.start_time.slice(0,5) && nowStr <= s.end_time.slice(0,5));
-
             if (currentSlot) {
-                const [endH, endM] = currentSlot.end_time.split(':').map(Number);
-                const endTimeDate = new Date(); endTimeDate.setHours(endH, endM, 0);
-                const diffMs = endTimeDate.getTime() - today.getTime();
-                const remainingMins = Math.ceil(diffMs / 60000);
-                
-                let statusText = currentSlot.name.toUpperCase();
-                if (currentSlot.type === 'LUNCH') statusText = "ÖĞLE ARASI";
-                if (currentSlot.type === 'BREAK') statusText = "TENEFFÜS";
-                
-                if (remainingMins > 0 && remainingMins < 120) setScheduleStatus(`${statusText} (Kalan: ${remainingMins} dk)`);
-                else setScheduleStatus(statusText);
+                setScheduleStatus(currentSlot.name.toUpperCase());
             } else setScheduleStatus("SERBEST ZAMAN");
         } catch (e) { setScheduleStatus("SERBEST ZAMAN"); }
     };
@@ -260,37 +176,21 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
   const shouldExecuteCommand = () => {
       const now = Date.now();
       if (now - lastCommandTime.current < 2000) return false;
-      lastCommandTime.current = now;
-      return true;
+      lastCommandTime.current = now; return true;
   };
 
-  const playSoundSafe = (audioObj: HTMLAudioElement) => {
-    try { audioObj.pause(); audioObj.currentTime = 0; audioObj.play().catch(() => {}); } catch (e) {}
-  };
-
-  // 🔥 GÜNCELLENMİŞ UNLOCK FONKSİYONU
-  const unlock = async (_fromRemote = false, teacherNameVal?: string, type: 'USB' | 'REMOTE' = 'REMOTE') => {
+  const unlock = async (_fromRemote = false, teacherNameVal?: string) => {
     if (teacherNameVal) setTeacherName(teacherNameVal);
-    
-    // Zaten açıksa tekrar açma (sadece ismi güncelle)
-    if (!isLockedRef.current) {
-        if (sessionIdRef.current && teacherNameVal) {
-             supabase.from('sessions').update({ teacher_name: teacherNameVal }).eq('qr_code', sessionIdRef.current).then();
-        }
-        return;
-    }
+    else if (!teacherName) setTeacherName("Nöbetçi Öğretmen");
 
-    // 🔥 KRİTİK DÜZELTME: QR İle Açılış (REMOTE) veya USB ise Initializing'i Takma
-    if (initializing && type !== 'USB' && type !== 'REMOTE') return;
+    if (!isLockedRef.current) return; // Zaten açıksa tekrar açma (Spam önle)
     
-    openedByRef.current = type;
-    console.log(`🔓 Kilit açılıyor... Yöntem: ${type}`);
-
+    if (initializing && !_fromRemote) return;
+    
     updateLockState(false); 
     (window as any).electron?.setViewMode('MINI'); 
     playSoundSafe(sfx.unlock);
     
-    // DB Güncelle
     const currentSessId = sessionIdRef.current || sessionId;
     if (currentSessId) {
         const updateData: any = { status: 'OPEN', created_at: new Date().toISOString() };
@@ -300,26 +200,30 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
     if (machineId) supabase.from('boards').update({ is_locked: false, lock_command: null }).eq('machine_id', machineId).then();
   };
 
-  const lock = (fromRemote = false) => {
+  const lock = (_fromRemote = false, remainingSeconds?: number) => {
     if (isLockedRef.current) return;
     
+    console.log("🔒 Kilitleniyor...");
+
     updateLockState(true); 
     setTeacherName(""); 
-    openedByRef.current = null; // Yöntemi sıfırla
-
-    (window as any).electron?.setViewMode('LOCKED');
+    (window as any).electron?.setViewMode('LOCKED'); 
     playSoundSafe(sfx.lock);
     
     const currentSessId = sessionIdRef.current || sessionId;
     if (machineId) supabase.from('boards').update({ is_locked: true, lock_command: null }).eq('machine_id', machineId).then();
-    if (!fromRemote && currentSessId) supabase.from('sessions').update({ status: 'LOCKED' }).eq('qr_code', currentSessId).then();
+    
+    if (currentSessId) {
+        const updateData: any = { status: 'LOCKED' };
+        if (remainingSeconds !== undefined && remainingSeconds > 0) {
+            const remainingMinutes = Math.ceil(remainingSeconds / 60);
+            updateData.duration = remainingMinutes;
+        }
+        supabase.from('sessions').update(updateData).eq('qr_code', currentSessId).then();
+    }
   };
-
-  const saveBoardName = async (name: string) => { 
-      if (!machineId) return;
-      await supabase.from('boards').update({ name }).eq('machine_id', machineId);
-      setIsSetupRequired(false);
-  };
+  
+  const saveBoardName = async (name: string) => { if (!machineId) return; await supabase.from('boards').update({ name }).eq('machine_id', machineId); setIsSetupRequired(false); };
   const markFilesAsRead = () => {};
   const playErrorSound = () => { playSoundSafe(sfx.alarm); };
 
@@ -329,9 +233,4 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
     </LockContext.Provider>
   );
 };
-
-export const useLock = () => {
-  const context = useContext(LockContext);
-  if (!context) throw new Error("useLock must be used within LockProvider");
-  return context;
-};
+export const useLock = () => { const context = useContext(LockContext); if (!context) throw new Error("useLock must be used within LockProvider"); return context; };

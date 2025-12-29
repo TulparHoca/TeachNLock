@@ -1,8 +1,21 @@
 /* =========================================
-   1. GLOBAL RESET & TAŞMA ÖNLEME
+   1. GLOBAL AYARLAR & iOS FONT SİSTEMİ
    ========================================= */
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  
+  /* Apple tarzı yazı tipi yumuşatma */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  
+  /* Mobilde tıklama efektini temizle */
+  -webkit-tap-highlight-color: transparent;
+}
+
 * {
-  box-sizing: border-box; /* Padding eklenince genişliğin artmasını engeller */
+  box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
@@ -10,28 +23,36 @@
 html, body {
   width: 100%;
   min-height: 100vh;
-  overflow-x: hidden; /* Yatay kaydırma çubuğunu gizle */
-  font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  background-color: #f3f4f6; /* App.jsx'teki arka plan rengiyle uyumlu */
+  /* Arka plan rengini artık React (App.jsx) yönetiyor */
+  overflow-x: hidden;
 }
 
 /* =========================================
-   2. ROOT DÜZELTMESİ (Vite Varsayılanlarını Ezme)
+   2. ROOT DÜZELTMESİ (Tam Ekran Yerleşimi)
    ========================================= */
 #root {
   width: 100%;
   min-height: 100vh;
   margin: 0;
-  padding: 0; /* Orijinal dosyadaki '2rem' padding'i kaldırdık, ekranı tam kaplasın */
+  padding: 0;
   text-align: center;
-  display: flex;       /* İçeriğin tam oturması için */
+  display: flex;
   flex-direction: column;
+  isolation: isolate;
 }
 
 /* =========================================
-   3. QR OKUYUCU DÜZELTMESİ
+   3. iOS TARZI BUTON TIKLAMA EFEKTİ
    ========================================= */
-/* HTML5-QRCode kütüphanesinin video elementini kapsayıcıya sığdırır */
+button:active {
+  transform: scale(0.96);
+  opacity: 0.9;
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+
+/* =========================================
+   4. QR OKUYUCU DÜZELTMELERİ
+   ========================================= */
 #reader {
   width: 100%;
   border: none !important;
@@ -41,36 +62,17 @@ html, body {
   object-fit: cover;
   width: 100% !important;
   height: auto !important;
-  border-radius: 15px;
+  border-radius: 32px; /* Köşeleri iyice yuvarla */
 }
 
 /* =========================================
-   4. ORİJİNAL LOGO EFEKTLERİ (İstersen kalsın)
+   5. SCROLLBAR GİZLEME (Native App Hissi)
    ========================================= */
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+::-webkit-scrollbar {
+  width: 0px;
+  background: transparent;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+* {
+  scrollbar-width: none;
 }

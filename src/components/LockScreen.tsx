@@ -357,4 +357,4 @@ export default function LockScreen() {
       `}</style>
     </div>
   );
-}
+}// Dosyanın en alt satırına bunu yapıştır:
