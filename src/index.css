@@ -1,3 +1,33 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* 👇 BUNLARI EN ALTA EKLE 👇 */
+
+/* Tüm uygulama genelinde dokunmatik ve fare kısıtlamaları */
+body, #root {
+  /* Metin seçmeyi engelle (Mavi mavi seçilmesini önler) */
+  user-select: none;
+  -webkit-user-select: none;
+
+  /* Resim veya öğe sürüklemeyi engelle (Hayalet görüntü çıkmasın) */
+  -webkit-user-drag: none;
+
+  /* En önemlisi: Dokunmatik hareketleri (zoom, sağa sola kayma) engelle */
+  touch-action: none;
+  
+  /* Sağ tık menüsünü engelle */
+  context-menu: none;
+
+  /* Ekranın taşmasını ve scroll bar çıkmasını garanti engelle */
+  overflow: hidden;
+}
+
+/* ÖNEMLİ: Şifre girilecek yerleri (Input) serbest bırak */
+/* Yoksa klavye açılmaz veya yazı seçemezsin */
+input, textarea {
+  user-select: text;
+  -webkit-user-select: text;
+  touch-action: auto;
+  cursor: text;
+}       
