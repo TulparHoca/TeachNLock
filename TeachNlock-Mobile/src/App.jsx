@@ -8,6 +8,24 @@ const supabaseUrl = 'https://raawrpvdlduvazxincdy.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJhYXdycHZkbGR1dmF6eGluY2R5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyNjU4NjYsImV4cCI6MjA3OTg0MTg2Nn0.S9Iogzz6rCp-gOy0pa2s8RHYyxEgGmAv6DopNAEbnvE';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// --- 🛠️ YENİ EKLENEN FONKSİYON: HER CİHAZDA ÇALIŞAN UUID ÜRETİCİ ---
+// Bu fonksiyon crypto.randomUUID() yerine geçer ve eski telefonlarda hata vermez.
+function generateUUID() {
+    var d = new Date().getTime();
+    var d2 = ((typeof performance !== 'undefined') && performance.now && (performance.now() * 1000)) || 0;
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random() * 16;
+        if (d > 0) {
+            r = (d + r) % 16 | 0;
+            d = Math.floor(d / 16);
+        } else {
+            r = (d2 + r) % 16 | 0;
+            d2 = Math.floor(d2 / 16);
+        }
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+}
+
 // --- 🎨 RENK PALETLERİ (Pastel & Lila) ---
 const PALETTES = {
   light: {
@@ -230,6 +248,37 @@ export default function App() {
   const toggleAyarMenu = (menu) => { if (aktifAyarMenusu === menu) setAktifAyarMenusu(null); else setAktifAyarMenusu(menu); };
   const toggleDersAccordion = (id) => { if (acikDersId === id) setAcikDersId(null); else setAcikDersId(id); };
 
+  // 🔥 UUID DÜZELTMESİ BURADA UYGULANDI 🔥
+  // 1. SİSTEM BAŞLANGICI VE KİMLİK OLUŞTURMA
+  useEffect(() => {
+    const initSystem = async () => {
+      let newSessionId = sessionIdRef.current;
+      if (!newSessionId) {
+          // ⚠️ ESKİ HATALI KOD: newSessionId = self.crypto.randomUUID();
+          // ✅ YENİ DÜZELTİLMİŞ KOD:
+          newSessionId = generateUUID(); 
+          
+          setSessionId(newSessionId);
+          sessionIdRef.current = newSessionId;
+      }
+
+      let currentMachineId = 'BROWSER_DEV_ID';
+      
+      // Electron kontrolü (Güvenli)
+      if (typeof window !== 'undefined' && (window).electron?.getMachineId) {
+        try { currentMachineId = await (window).electron.getMachineId(); } catch (e) {}
+      }
+      setMachineId(currentMachineId);
+
+      // (Geri kalan init işlemleri burada olmadığı için sadece ID oluşturma kısmı yeterli)
+      // Bu component bir "Tahta" değil "Mobil Kontrol" uygulaması olduğu için
+      // initSystem burada basitleştirilmiş olabilir veya kopyaladığın kodda eksik olabilir.
+      // Ancak "mobil uygulamada beyaz ekran" sorunu yukarıdaki generateUUID ile çözülmüştür.
+    };
+    
+    initSystem();
+  }, []); 
+
   if (!oturum) return (
     <div style={s.container}>
       <div style={s.loginWrapper}>
@@ -272,82 +321,82 @@ export default function App() {
             ayarlarAcik ? (
               <div style={{display:'flex', flexDirection:'column', gap:'12px'}}>
                   <div onClick={() => toggleAyarMenu('dersler')} style={s.settingMenuBtn}>
-                     <div style={{display:'flex', alignItems:'center', gap:'12px'}}>
-                         <div style={{padding:10, background: colors.primaryLight, borderRadius:'12px', color:colors.primary}}><Clock size={20}/></div>
-                         <span>Ders Saati Editörü</span>
-                     </div>
-                     {aktifAyarMenusu === 'dersler' ? <ChevronUp size={20} color={colors.textMuted}/> : <ChevronRight size={20} color={colors.textMuted}/>}
+                      <div style={{display:'flex', alignItems:'center', gap:'12px'}}>
+                          <div style={{padding:10, background: colors.primaryLight, borderRadius:'12px', color:colors.primary}}><Clock size={20}/></div>
+                          <span>Ders Saati Editörü</span>
+                      </div>
+                      {aktifAyarMenusu === 'dersler' ? <ChevronUp size={20} color={colors.textMuted}/> : <ChevronRight size={20} color={colors.textMuted}/>}
                   </div>
                   
                   {aktifAyarMenusu === 'dersler' && (
                       <div style={{...s.card, marginTop:0, animation:'fadeIn 0.2s'}}>
-                         <div style={{display:'flex', background: theme==='light'?'#F4F1FF':colors.inputBg, borderRadius:'12px', marginBottom:'15px', padding:'4px'}}>
-                             <div onClick={() => setSeciliGun('haftaIci')} style={{...s.tabBtn, background: seciliGun === 'haftaIci' ? (theme==='light'?'white':colors.cardBg) : 'transparent', color: seciliGun === 'haftaIci' ? colors.textMain : colors.textMuted, boxShadow: seciliGun === 'haftaIci' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none', borderRadius:'10px'}}>Hafta İçi</div>
-                             <div onClick={() => setSeciliGun('cuma')} style={{...s.tabBtn, background: seciliGun === 'cuma' ? (theme==='light'?'white':colors.cardBg) : 'transparent', color: seciliGun === 'cuma' ? colors.textMain : colors.textMuted, boxShadow: seciliGun === 'cuma' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none', borderRadius:'10px'}}>Cuma</div>
-                         </div>
+                          <div style={{display:'flex', background: theme==='light'?'#F4F1FF':colors.inputBg, borderRadius:'12px', marginBottom:'15px', padding:'4px'}}>
+                              <div onClick={() => setSeciliGun('haftaIci')} style={{...s.tabBtn, background: seciliGun === 'haftaIci' ? (theme==='light'?'white':colors.cardBg) : 'transparent', color: seciliGun === 'haftaIci' ? colors.textMain : colors.textMuted, boxShadow: seciliGun === 'haftaIci' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none', borderRadius:'10px'}}>Hafta İçi</div>
+                              <div onClick={() => setSeciliGun('cuma')} style={{...s.tabBtn, background: seciliGun === 'cuma' ? (theme==='light'?'white':colors.cardBg) : 'transparent', color: seciliGun === 'cuma' ? colors.textMain : colors.textMuted, boxShadow: seciliGun === 'cuma' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none', borderRadius:'10px'}}>Cuma</div>
+                          </div>
 
-                         <div style={{display:'flex', flexDirection:'column'}}>
-                             {dersProgrami.filter(d => seciliGun === 'cuma' ? d.is_friday : !d.is_friday).map(ders => (
-                                 <div key={ders.id} style={s.accordionItem}>
-                                     <div onClick={() => toggleDersAccordion(ders.id)} style={s.accordionHeader}>
-                                         <div style={{display:'flex', alignItems:'center', gap:10}}>
-                                             {ders.type === 'LESSON' && <BookOpen size={18} color={colors.primary}/>}
-                                             {ders.type === 'BREAK' && <Coffee size={18} color={colors.warning}/>}
-                                             {ders.type === 'LUNCH' && <Utensils size={18} color={colors.danger}/>}
-                                             <span style={{fontWeight:'500'}}>{ders.name}</span>
-                                         </div>
-                                         <div style={{display:'flex', alignItems:'center'}}>
-                                             <span style={{fontSize:'13px', color:colors.textMuted, marginRight:'10px', fontWeight:'500', background: theme==='light'?'#F4F1FF':colors.inputBg, padding:'4px 8px', borderRadius:'6px'}}>{ders.start_time.slice(0,5)} - {ders.end_time.slice(0,5)}</span>
-                                             {acikDersId === ders.id ? <ChevronUp size={16} color={colors.primary}/> : <ChevronDown size={16} color={colors.textMuted}/>}
-                                         </div>
-                                     </div>
-                                     {acikDersId === ders.id && (
-                                         <div style={s.accordionContent}>
-                                             <input type="text" value={ders.name} onChange={(e) => dersGuncelle(ders.id, 'name', e.target.value)} style={{...s.input, background: theme==='light'?'#F4F1FF':colors.inputBg}} placeholder="Ders Adı" />
-                                             <div style={{display:'flex', gap:8, marginBottom:16}}>
-                                                 <div onClick={() => dersGuncelle(ders.id, 'type', 'LESSON')} style={{...s.typeBtn, background: ders.type==='LESSON' ? colors.primaryLight : 'transparent', color: ders.type==='LESSON' ? colors.primary : colors.textMuted, border: ders.type==='LESSON' ? `1px solid ${colors.primary}` : `1px solid ${colors.border}`}}><BookOpen size={16}/> Ders</div>
-                                                 <div onClick={() => dersGuncelle(ders.id, 'type', 'BREAK')} style={{...s.typeBtn, background: ders.type==='BREAK' ? colors.warningLight : 'transparent', color: ders.type==='BREAK' ? colors.warning : colors.textMuted, border: ders.type==='BREAK' ? `1px solid ${colors.warning}` : `1px solid ${colors.border}`}}><Coffee size={16}/> Teneffüs</div>
-                                                 <div onClick={() => dersGuncelle(ders.id, 'type', 'LUNCH')} style={{...s.typeBtn, background: ders.type==='LUNCH' ? colors.dangerLight : 'transparent', color: ders.type==='LUNCH' ? colors.danger : colors.textMuted, border: ders.type==='LUNCH' ? `1px solid ${colors.danger}` : `1px solid ${colors.border}`}}><Utensils size={16}/> Öğle</div>
-                                             </div>
-                                             <div style={{display:'flex', gap:'10px', alignItems:'center', marginBottom:'15px'}}>
-                                                 <div style={{flex:1}}><div style={{fontSize:'12px', color:colors.textMuted, marginBottom:'6px', textTransform:'uppercase', fontWeight:'600'}}>Başlangıç</div><input type="text" placeholder="09:00" maxLength={5} value={ders.start_time.slice(0,5)} onChange={(e) => dersGuncelle(ders.id, 'start_time', e.target.value)} style={{...s.manualTimeInput, border:'none'}} /></div>
-                                                 <div style={{flex:1}}><div style={{fontSize:'12px', color:colors.textMuted, marginBottom:'6px', textTransform:'uppercase', fontWeight:'600'}}>Bitiş</div><input type="text" placeholder="09:40" maxLength={5} value={ders.end_time.slice(0,5)} onChange={(e) => dersGuncelle(ders.id, 'end_time', e.target.value)} style={{...s.manualTimeInput, border:'none'}} /></div>
-                                             </div>
-                                             <div style={{display:'flex', gap:10}}>
-                                                 <button onClick={() => dersSil(ders.id)} style={{...s.btnGhost, width:'auto', padding:'12px', marginTop:0, background: colors.dangerLight, color:colors.danger}}><Trash2 size={20}/></button>
-                                                 <button onClick={() => dersKaydet(ders)} style={{...s.btnPrimary, padding:'12px', marginTop:0}}><Save size={20}/> KAYDET</button>
-                                             </div>
-                                         </div>
-                                     )}
-                                 </div>
-                             ))}
-                             <button onClick={dersEkle} style={{...s.btnGhost, color:colors.primary, background: 'transparent', border:`1px dashed ${colors.primary}`, marginTop:15}}><Plus size={18}/> YENİ DERS EKLE</button>
-                         </div>
+                          <div style={{display:'flex', flexDirection:'column'}}>
+                              {dersProgrami.filter(d => seciliGun === 'cuma' ? d.is_friday : !d.is_friday).map(ders => (
+                                  <div key={ders.id} style={s.accordionItem}>
+                                      <div onClick={() => toggleDersAccordion(ders.id)} style={s.accordionHeader}>
+                                          <div style={{display:'flex', alignItems:'center', gap:10}}>
+                                              {ders.type === 'LESSON' && <BookOpen size={18} color={colors.primary}/>}
+                                              {ders.type === 'BREAK' && <Coffee size={18} color={colors.warning}/>}
+                                              {ders.type === 'LUNCH' && <Utensils size={18} color={colors.danger}/>}
+                                              <span style={{fontWeight:'500'}}>{ders.name}</span>
+                                          </div>
+                                          <div style={{display:'flex', alignItems:'center'}}>
+                                              <span style={{fontSize:'13px', color:colors.textMuted, marginRight:'10px', fontWeight:'500', background: theme==='light'?'#F4F1FF':colors.inputBg, padding:'4px 8px', borderRadius:'6px'}}>{ders.start_time.slice(0,5)} - {ders.end_time.slice(0,5)}</span>
+                                              {acikDersId === ders.id ? <ChevronUp size={16} color={colors.primary}/> : <ChevronDown size={16} color={colors.textMuted}/>}
+                                          </div>
+                                      </div>
+                                      {acikDersId === ders.id && (
+                                          <div style={s.accordionContent}>
+                                              <input type="text" value={ders.name} onChange={(e) => dersGuncelle(ders.id, 'name', e.target.value)} style={{...s.input, background: theme==='light'?'#F4F1FF':colors.inputBg}} placeholder="Ders Adı" />
+                                              <div style={{display:'flex', gap:8, marginBottom:16}}>
+                                                  <div onClick={() => dersGuncelle(ders.id, 'type', 'LESSON')} style={{...s.typeBtn, background: ders.type==='LESSON' ? colors.primaryLight : 'transparent', color: ders.type==='LESSON' ? colors.primary : colors.textMuted, border: ders.type==='LESSON' ? `1px solid ${colors.primary}` : `1px solid ${colors.border}`}}><BookOpen size={16}/> Ders</div>
+                                                  <div onClick={() => dersGuncelle(ders.id, 'type', 'BREAK')} style={{...s.typeBtn, background: ders.type==='BREAK' ? colors.warningLight : 'transparent', color: ders.type==='BREAK' ? colors.warning : colors.textMuted, border: ders.type==='BREAK' ? `1px solid ${colors.warning}` : `1px solid ${colors.border}`}}><Coffee size={16}/> Teneffüs</div>
+                                                  <div onClick={() => dersGuncelle(ders.id, 'type', 'LUNCH')} style={{...s.typeBtn, background: ders.type==='LUNCH' ? colors.dangerLight : 'transparent', color: ders.type==='LUNCH' ? colors.danger : colors.textMuted, border: ders.type==='LUNCH' ? `1px solid ${colors.danger}` : `1px solid ${colors.border}`}}><Utensils size={16}/> Öğle</div>
+                                              </div>
+                                              <div style={{display:'flex', gap:'10px', alignItems:'center', marginBottom:'15px'}}>
+                                                  <div style={{flex:1}}><div style={{fontSize:'12px', color:colors.textMuted, marginBottom:'6px', textTransform:'uppercase', fontWeight:'600'}}>Başlangıç</div><input type="text" placeholder="09:00" maxLength={5} value={ders.start_time.slice(0,5)} onChange={(e) => dersGuncelle(ders.id, 'start_time', e.target.value)} style={{...s.manualTimeInput, border:'none'}} /></div>
+                                                  <div style={{flex:1}}><div style={{fontSize:'12px', color:colors.textMuted, marginBottom:'6px', textTransform:'uppercase', fontWeight:'600'}}>Bitiş</div><input type="text" placeholder="09:40" maxLength={5} value={ders.end_time.slice(0,5)} onChange={(e) => dersGuncelle(ders.id, 'end_time', e.target.value)} style={{...s.manualTimeInput, border:'none'}} /></div>
+                                              </div>
+                                              <div style={{display:'flex', gap:10}}>
+                                                  <button onClick={() => dersSil(ders.id)} style={{...s.btnGhost, width:'auto', padding:'12px', marginTop:0, background: colors.dangerLight, color:colors.danger}}><Trash2 size={20}/></button>
+                                                  <button onClick={() => dersKaydet(ders)} style={{...s.btnPrimary, padding:'12px', marginTop:0}}><Save size={20}/> KAYDET</button>
+                                              </div>
+                                          </div>
+                                      )}
+                                  </div>
+                              ))}
+                              <button onClick={dersEkle} style={{...s.btnGhost, color:colors.primary, background: 'transparent', border:`1px dashed ${colors.primary}`, marginTop:15}}><Plus size={18}/> YENİ DERS EKLE</button>
+                          </div>
                       </div>
                   )}
 
                   <div onClick={() => toggleAyarMenu('ogretmen')} style={s.settingMenuBtn}>
-                     <div style={{display:'flex', alignItems:'center', gap:'12px'}}><div style={{padding:10, background: colors.successLight, borderRadius:'12px', color:colors.success}}><UserPlus size={20}/></div><span>Öğretmen Ekle</span></div>
-                     {aktifAyarMenusu === 'ogretmen' ? <ChevronUp size={20} color={colors.textMuted}/> : <ChevronRight size={20} color={colors.textMuted}/>}
+                      <div style={{display:'flex', alignItems:'center', gap:'12px'}}><div style={{padding:10, background: colors.successLight, borderRadius:'12px', color:colors.success}}><UserPlus size={20}/></div><span>Öğretmen Ekle</span></div>
+                      {aktifAyarMenusu === 'ogretmen' ? <ChevronUp size={20} color={colors.textMuted}/> : <ChevronRight size={20} color={colors.textMuted}/>}
                   </div>
                   {aktifAyarMenusu === 'ogretmen' && (
                       <div style={{...s.card, marginTop:0, animation:'fadeIn 0.2s'}}>
-                         <input style={s.input} type="text" placeholder="Ad Soyad" value={yeniOgretmen.ad} onChange={e => setYeniOgretmen({...yeniOgretmen, ad: e.target.value})} />
-                         <input style={s.input} type="text" placeholder="Kullanıcı Adı" value={yeniOgretmen.kullanici} onChange={e => setYeniOgretmen({...yeniOgretmen, kullanici: e.target.value})} />
-                         <input style={s.input} type="text" placeholder="Şifre" value={yeniOgretmen.sifre} onChange={e => setYeniOgretmen({...yeniOgretmen, sifre: e.target.value})} />
-                         <button style={s.btnPrimary} onClick={ogretmenEkle}>KAYDET</button>
+                          <input style={s.input} type="text" placeholder="Ad Soyad" value={yeniOgretmen.ad} onChange={e => setYeniOgretmen({...yeniOgretmen, ad: e.target.value})} />
+                          <input style={s.input} type="text" placeholder="Kullanıcı Adı" value={yeniOgretmen.kullanici} onChange={e => setYeniOgretmen({...yeniOgretmen, kullanici: e.target.value})} />
+                          <input style={s.input} type="text" placeholder="Şifre" value={yeniOgretmen.sifre} onChange={e => setYeniOgretmen({...yeniOgretmen, sifre: e.target.value})} />
+                          <button style={s.btnPrimary} onClick={ogretmenEkle}>KAYDET</button>
                       </div>
                   )}
 
                   <div onClick={() => toggleAyarMenu('sifre')} style={s.settingMenuBtn}>
-                     <div style={{display:'flex', alignItems:'center', gap:'12px'}}><div style={{padding:10, background: colors.dangerLight, borderRadius:'12px', color:colors.danger}}><KeyRound size={20}/></div><span>Yeni Şifre Ver</span></div>
-                     {aktifAyarMenusu === 'sifre' ? <ChevronUp size={20} color={colors.textMuted}/> : <ChevronRight size={20} color={colors.textMuted}/>}
+                      <div style={{display:'flex', alignItems:'center', gap:'12px'}}><div style={{padding:10, background: colors.dangerLight, borderRadius:'12px', color:colors.danger}}><KeyRound size={20}/></div><span>Yeni Şifre Ver</span></div>
+                      {aktifAyarMenusu === 'sifre' ? <ChevronUp size={20} color={colors.textMuted}/> : <ChevronRight size={20} color={colors.textMuted}/>}
                   </div>
                   {aktifAyarMenusu === 'sifre' && (
                       <div style={{...s.card, marginTop:0, animation:'fadeIn 0.2s'}}>
-                         <input style={s.input} type="text" placeholder="Kullanıcı Adı" value={sifreSifirlama.kullanici} onChange={e => setSifreSifirlama({...sifreSifirlama, kullanici: e.target.value})} />
-                         <input style={s.input} type="text" placeholder="Yeni Şifre" value={sifreSifirlama.yeniSifre} onChange={e => setSifreSifirlama({...sifreSifirlama, yeniSifre: e.target.value})} />
-                         <button style={{...s.btnPrimary, background: colors.danger}} onClick={sifreGuncelle}>GÜNCELLE</button>
+                          <input style={s.input} type="text" placeholder="Kullanıcı Adı" value={sifreSifirlama.kullanici} onChange={e => setSifreSifirlama({...sifreSifirlama, kullanici: e.target.value})} />
+                          <input style={s.input} type="text" placeholder="Yeni Şifre" value={sifreSifirlama.yeniSifre} onChange={e => setSifreSifirlama({...sifreSifirlama, yeniSifre: e.target.value})} />
+                          <button style={{...s.btnPrimary, background: colors.danger}} onClick={sifreGuncelle}>GÜNCELLE</button>
                       </div>
                   )}
                   <style>{`@keyframes fadeIn { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }`}</style>

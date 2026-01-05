@@ -9,7 +9,7 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: { detectSessionInUrl: false, persistSession: true, autoRefreshToken: true }
 });
 
-// Ses dosyalarını sadece Client tarafında oluştur (SSR hatasını önler)
+// Ses dosyalarını Client tarafında oluştur
 const sfx = typeof window !== 'undefined' ? {
   unlock: new Audio('./sounds/unlock.mp3'),
   lock: new Audio('./sounds/lock.mp3'),
@@ -41,6 +41,9 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
 
   const lastCommandTime = useRef<number>(0);
   const sessionIdRef = useRef(''); 
+  
+  // 🔥 Hayalet Komut Koruması
+  const processedCommandRef = useRef<string>("");
 
   const playSoundSafe = useCallback((type: 'unlock' | 'lock' | 'file' | 'alarm') => { 
       if (!sfx || !sfx[type]) return;
@@ -79,6 +82,11 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
       
       if (schoolSettings && schoolSettings.announcement) setAnnouncement(schoolSettings.announcement);
       
+      // Başlangıçta veritabanında "SHUTDOWN" emri varsa bile, sistem yeni açıldığı için onu yoksay.
+      if (schoolSettings && schoolSettings.system_command) {
+          processedCommandRef.current = schoolSettings.system_command; 
+      }
+
       if (!existingBoard) {
         await supabase.from('boards').upsert({ machine_id: currentMachineId, is_active: true, is_locked: true, last_seen: new Date().toISOString() });
         setIsSetupRequired(true); 
@@ -98,17 +106,16 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
     initSystem();
   }, [updateLockState]); 
 
-  // Kilit Açma / Kapama Fonksiyonları (useCallback ile stabilize edildi)
+  // Kilit Açma Fonksiyonu
   const unlock = useCallback(async (_fromRemote = false, teacherNameVal?: string) => {
     const now = Date.now();
-    // Spam koruması: Eğer son 1 saniye içinde komut geldiyse yoksay
     if (now - lastCommandTime.current < 1000) return;
     lastCommandTime.current = now;
 
     if (teacherNameVal) setTeacherName(teacherNameVal);
     else if (!teacherName) setTeacherName("Nöbetçi Öğretmen");
 
-    if (!isLockedRef.current) return; // Zaten açıksa işlem yapma
+    if (!isLockedRef.current) return;
     
     updateLockState(false); 
     (window as any).electron?.setViewMode('MINI'); 
@@ -120,10 +127,10 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
         if (teacherNameVal) updateData.teacher_name = teacherNameVal;
         await supabase.from('sessions').update(updateData).eq('qr_code', currentSessId);
     }
-    // Board tablosunu güncelle ama 'lock_command'ı null yap ki loop'a girmesin
     if (machineId) supabase.from('boards').update({ is_locked: false, lock_command: null }).eq('machine_id', machineId).then();
   }, [machineId, teacherName, playSoundSafe, updateLockState]);
 
+  // Kilit Kapama Fonksiyonu
   const lock = useCallback((_fromRemote = false, remainingSeconds?: number) => {
     const now = Date.now();
     if (now - lastCommandTime.current < 1000) return;
@@ -136,6 +143,11 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
     setTeacherName(""); 
     (window as any).electron?.setViewMode('LOCKED'); 
     playSoundSafe('lock');
+
+    // MEDYAYI DURDUR
+    if ((window as any).electron?.stopMedia) {
+        (window as any).electron.stopMedia();
+    }
     
     const currentSessId = sessionIdRef.current;
     if (machineId) supabase.from('boards').update({ is_locked: true, lock_command: null }).eq('machine_id', machineId).then();
@@ -150,11 +162,9 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [machineId, playSoundSafe, updateLockState]);
 
-  // 🔥 2. USB DİNLEYİCİSİ (FIXED: ARTIK TEMİZLENİYOR!)
+  // 🔥 2. USB DİNLEYİCİSİ
   useEffect(() => {
     if (typeof window !== 'undefined' && (window as any).electron?.onUsbStatus) {
-       // Bu fonksiyon clean-up için bir "unsubscribe" fonksiyonu döndürmeli
-       // Eğer preload.js'in bunu desteklemiyorsa bile bu yapı daha güvenli
        const removeListener = (window as any).electron.onUsbStatus(async (response: any) => { 
            console.log("🔌 USB Sinyali:", response?.status);
 
@@ -167,23 +177,20 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
            }
        });
 
-       // CLEANUP FONKSİYONU: Component silinince veya machineId değişince dinleyiciyi kaldır
        return () => {
            if (removeListener && typeof removeListener === 'function') {
                removeListener();
            } else if ((window as any).electron?.removeUsbListener) {
-               // Eğer removeListener dönmüyorsa, manuel silme metodu varsa onu çağır
                (window as any).electron.removeUsbListener();
            }
        };
     }
   }, [machineId, unlock]); 
 
-  // 🔥 3. REALTIME (FIXED: TEKİL KANAL YÖNETİMİ)
+  // 🔥 3. REALTIME VE "HAYALET KOMUT" KORUMASI
   useEffect(() => {
     if (!sessionId || !machineId) return;
     
-    // Dosyaları ilk başta çek
     supabase.from('files').select('*').eq('session_id', sessionId).order('created_at', { ascending: false }).then(({ data }) => { if (data) setFiles(data); });
 
     const channel = supabase.channel(`system_sync_${sessionId}`)
@@ -198,7 +205,6 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'boards', filter: `machine_id=eq.${machineId}` }, (payload: any) => {
           if (payload.new.announcement !== undefined) setAnnouncement(payload.new.announcement || "");
           
-          // Sadece "lock_command" varsa işlem yap, yoksa (null ise) yapma
           if (payload.new.lock_command === 'UNLOCK' && isLockedRef.current) {
               unlock(true);
           }
@@ -207,8 +213,19 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
           }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'school_settings' }, (payload: any) => {
-          if (payload.new.announcement !== undefined) setAnnouncement(payload.new.announcement || "");
-          if (payload.new.system_command === 'SHUTDOWN_ALL') { 
+          if (payload.new.announcement !== undefined) {
+             setAnnouncement(payload.new.announcement || "");
+          }
+
+          // 🛑 SİSTEM KOMUTU KONTROLÜ
+          const incomingCmd = payload.new.system_command;
+          if (incomingCmd === 'SHUTDOWN_ALL') {
+              if (processedCommandRef.current === incomingCmd) {
+                  console.log("⚠️ Eski kapatma emri algılandı, yoksayılıyor.");
+                  return;
+              }
+              console.log("🚨 SİSTEM KAPATMA EMRİ ALINDI!");
+              processedCommandRef.current = incomingCmd; 
               playSoundSafe('alarm'); 
               if ((window as any).electron) setTimeout(() => { (window as any).electron.shutdownPC(); }, 2000); 
           }
@@ -219,22 +236,29 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
       })
       .subscribe();
 
-    // CLEANUP: Kanalı mutlaka kapat
     return () => { supabase.removeChannel(channel); };
   }, [sessionId, machineId, unlock, lock, playSoundSafe]); 
 
-  // 4. DERS PROGRAMI (Aynı mantık, sadece interval temizliği garanti edildi)
+  // 4. DERS PROGRAMI
   useEffect(() => {
     const calculateSchedule = async () => {
         try {
-            const today = new Date(); const isFriday = today.getDay() === 5;
+            const today = new Date(); 
+            const isFriday = today.getDay() === 5;
             const { data: schedule } = await supabase.from('lecture_schedule').select('*').eq('is_friday', isFriday).order('start_time');
+            
             if (!schedule || schedule.length === 0) { setScheduleStatus("SERBEST ZAMAN"); return; }
-            const nowStr = today.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+            
+            const hours = today.getHours().toString().padStart(2, '0');
+            const minutes = today.getMinutes().toString().padStart(2, '0');
+            const nowStr = `${hours}:${minutes}`;
+            
             const currentSlot = schedule.find(s => nowStr >= s.start_time.slice(0,5) && nowStr <= s.end_time.slice(0,5));
             if (currentSlot) {
                 setScheduleStatus(currentSlot.name.toUpperCase());
-            } else setScheduleStatus("SERBEST ZAMAN");
+            } else {
+                setScheduleStatus("SERBEST ZAMAN");
+            }
         } catch (e) { setScheduleStatus("SERBEST ZAMAN"); }
     };
     calculateSchedule();
@@ -242,7 +266,121 @@ export const LockProvider = ({ children }: { children: ReactNode }) => {
     return () => clearInterval(interval);
   }, []);
 
-  const saveBoardName = async (name: string) => { if (!machineId) return; await supabase.from('boards').update({ name }).eq('machine_id', machineId); setIsSetupRequired(false); };
+  // 🔥 5. NABIZ (HEARTBEAT) SİSTEMİ
+  useEffect(() => {
+    if (!machineId) return;
+
+    const heartbeat = async () => {
+        try {
+            await supabase.from('boards').update({ 
+                last_seen: new Date().toISOString(),
+                is_active: true 
+            }).eq('machine_id', machineId);
+        } catch (e) { console.error("Nabız hatası", e); }
+    };
+    heartbeat();
+    const interval = setInterval(heartbeat, 60000);
+    return () => clearInterval(interval);
+  }, [machineId]);
+
+  // 👇 🔥 6. OTOMATİK GÜNCELLEME KONTROLÜ (DERS BÖLMEZ, SORAR)
+  useEffect(() => {
+    // Sadece Electron ortamında çalışsın
+    if (typeof window === 'undefined' || !(window as any).electron) return;
+
+    const checkUpdate = async () => {
+        try {
+            // 1. En son sürümü veritabanından çek
+            const { data, error } = await supabase
+                .from('app_settings') 
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .single();
+
+            if (error || !data) return;
+
+            // ✅ TAHTANIN MEVCUT SÜRÜMÜ
+            const currentVersion = '2.0.2'; 
+            const remoteVersion = data.version;
+
+            console.log(`Versiyon Kontrolü: Tahta=${currentVersion} | Sunucu=${remoteVersion}`);
+
+            // 2. Eğer sunucudaki versiyon daha büyükse SOR
+            if (remoteVersion > currentVersion) {
+                
+                // 🔔 ÖĞRETMENE SOR PENCERESİ
+                const onay = window.confirm(
+                    `📢 YENİ SİSTEM GÜNCELLEMESİ MEVCUT!\n\n` +
+                    `Yeni Sürüm: v${remoteVersion}\n` +
+                    `Mevcut Sürüm: v${currentVersion}\n\n` +
+                    `Ders arasında mısınız? Güncellemeyi şimdi başlatmak ister misiniz?\n` +
+                    `(İptal derseniz bir sonraki açılışta tekrar sorulur.)`
+                );
+
+                if (onay) {
+                    (window as any).electron.startUpdate(data.download_url, data.update_hash);
+                } else {
+                    console.log("Kullanıcı güncellemeyi erteledi.");
+                }
+            }
+        } catch (e) {
+            console.error("Güncelleme kontrol hatası:", e);
+        }
+    };
+
+    // Açılıştan 10 saniye sonra kontrol et (Sistem kendine gelsin)
+    const timer = setTimeout(checkUpdate, 10000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // 👇 🔥 7. GÜÇ VE UYKU YÖNETİMİ (YENİ EKLENDİ)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !(window as any).electron) return;
+
+    // Uykuya dalınca (Power tuşuna basılınca)
+    const handleSuspend = () => {
+       console.log("💤 Sistem uykuya geçiyor -> KİLİTLENİYOR");
+       lock(true); // Zorla kilitle
+    };
+
+    // Uyanınca
+    const handleResume = () => {
+       console.log("☀️ Sistem uyandı -> Güvenlik kontrolü");
+       lock(true); // Uyanınca da kilitle
+    };
+
+    // Dinleyicileri başlat
+    if ((window as any).electron.onSystemSuspend) {
+        (window as any).electron.onSystemSuspend(handleSuspend);
+    }
+    if ((window as any).electron.onSystemResume) {
+        (window as any).electron.onSystemResume(handleResume);
+    }
+
+    // Temizlik
+    return () => {
+      if ((window as any).electron.removeSystemListeners) {
+        (window as any).electron.removeSystemListeners();
+      }
+    };
+  }, [lock]);
+
+  // 👇 SAVE BOARD NAME
+  const saveBoardName = async (name: string) => {
+    if (!machineId) {
+        console.error("ID Yok, Kayıt Yapılamaz.");
+        return;
+    }
+    try {
+        const { error } = await supabase.from('boards').update({ name }).eq('machine_id', machineId);
+        if (error) throw error;
+        setIsSetupRequired(false);
+    } catch (err) {
+        console.error("Kayıt Hatası:", err);
+    }
+  };
+
   const markFilesAsRead = () => {};
   const playErrorSound = () => { playSoundSafe('alarm'); };
 

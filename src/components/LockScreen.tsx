@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useLock } from '../context/LockContext';
 import QRCode from 'qrcode';
-import { Lock, ScanFace, Cloud, Sun, CloudRain, Users, Timer, Power, X, RefreshCw, Delete, Coffee, BookOpen } from 'lucide-react';
+import { Lock, ScanFace, Cloud, Sun, CloudRain, Users, Timer, Power, X, RefreshCw, Delete, Coffee, BookOpen, Keyboard } from 'lucide-react';
+import VirtualKeyboard from './VirtualKeyboard'; // 👈 Sanal Klavye import edildi
 
-// --- BİLEŞEN: NUMPAD ---
+// --- BİLEŞEN: NUMPAD (Sınav ve Grup Modu İçin) ---
 const Numpad = ({ onInput, onDelete, onConfirm }: { onInput: (n: number) => void, onDelete: () => void, onConfirm: () => void }) => {
   return (
     <div className="bg-slate-950/50 p-6 rounded-2xl border border-white/10 w-full h-full flex flex-col justify-center">
@@ -155,7 +156,7 @@ const GroupModal = ({ onClose }: { onClose: () => void }) => {
            <div className="grid grid-cols-3 gap-4">
              {groups.map((grp, i) => (
                <div key={i} className="bg-slate-800/60 border border-purple-500/20 p-5 rounded-2xl relative group hover:border-purple-500/50 transition hover:bg-slate-800">
-                 <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-purple-500 to-transparent opacity-50"></div>
+                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-transparent opacity-50"></div>
                  <div className="text-purple-300 font-bold text-xs uppercase tracking-wider bg-purple-500/10 px-2 py-1 rounded w-fit mb-3">Grup {i+1}</div>
                  <div className="text-xl font-mono text-white text-center leading-relaxed font-medium">
                     {grp.map((s, idx) => (
@@ -190,6 +191,9 @@ export default function LockScreen() {
   const [activeModal, setActiveModal] = useState<'NONE' | 'EXAM' | 'GROUP'>('NONE');
   const [emergencyInput, setEmergencyInput] = useState('');
 
+  // 👇 Sanal Klavye State'i
+  const [showKeyboard, setShowKeyboard] = useState(false);
+
   // QR
   useEffect(() => {
     if (sessionId) QRCode.toDataURL(sessionId, { width: 300, margin: 2, color: { dark: '#000000', light: '#ffffff' } }).then(setQrCodeUrl);
@@ -221,11 +225,8 @@ export default function LockScreen() {
     return <CloudRain size={40} className="text-cyan-400 drop-shadow-[0_0_10px_rgba(34,211,238,0.5)]" />;
   };
 
-  // ACİL DURUM KODU
-  const handleEmergency = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setEmergencyInput(val);
-
+  // ACİL DURUM KODU (Kontrol Fonksiyonu)
+  const checkCode = (val: string) => {
     const today = new Date();
     const day = String(today.getDate()).padStart(2, '0');
     const month = String(today.getMonth() + 1).padStart(2, '0');
@@ -236,11 +237,32 @@ export default function LockScreen() {
     if (val === dynamicCode || val === MASTER_CODE) { 
         unlock(true); 
         setEmergencyInput(''); 
+        setShowKeyboard(false); // Başarılıysa klavyeyi kapat
     }
   };
 
+  const handleEmergency = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setEmergencyInput(val);
+    checkCode(val);
+  };
+
+  // 👇 Sanal Klavye Tuş İşlemleri
+  const handleVirtualKeyPress = (key: string) => {
+    setEmergencyInput(prev => {
+        const newVal = (prev + key).slice(0, 6); // Max 6 karakter
+        checkCode(newVal); // Her tuşta kontrol et
+        return newVal;
+    });
+  };
+
+  const handleVirtualBackspace = () => {
+    setEmergencyInput(prev => prev.slice(0, -1));
+  };
+
   const handleSystemShutdown = () => {
-      window.electron?.shutdownPC();
+      // TypeScript hatası olmaması için
+      (window as any).electron?.shutdownPC();
   };
 
   // Tasarım: Ders Durumu Renkleri
@@ -251,7 +273,9 @@ export default function LockScreen() {
 
   return (
     <div className="fixed inset-0 w-screen h-screen bg-[url('https://images.unsplash.com/photo-1510511459019-5dda7724fd87?q=80&w=1920')] bg-cover bg-center flex flex-col items-center justify-between py-10 text-white overflow-hidden font-sans select-none">
-      <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm z-0"></div>
+      
+      {/* 👇 ARKA PLAN KOYULUĞU: %95 yaparak 'siyah perde' efektini garantiye aldık */}
+      <div className="absolute inset-0 bg-slate-950/95 backdrop-blur-md z-0"></div>
 
       {/* ÜST */}
       <div className="relative z-10 w-full px-12 flex justify-between items-start animate-in fade-in slide-in-from-top duration-700">
@@ -277,23 +301,22 @@ export default function LockScreen() {
         <div className="relative bg-slate-900/60 backdrop-blur-xl p-6 rounded-3xl border border-cyan-500/30 shadow-[0_0_50px_-10px_rgba(6,182,212,0.3)] flex flex-col items-center group transition-all duration-500 hover:shadow-[0_0_70px_-10px_rgba(6,182,212,0.5)]">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-1 bg-cyan-500 blur-md opacity-50 group-hover:opacity-100 transition-opacity duration-500"></div>
           
-          {/* 🔥 DÜZELTME: -top-6 YERİNE -top-14 YAPILDI (DAHA YUKARI ÇEKİLDİ) */}
           <div className={`
-             absolute -top-14 left-1/2 -translate-x-1/2 whitespace-nowrap px-6 py-2.5 rounded-full border backdrop-blur-md shadow-lg flex items-center gap-3 animate-in zoom-in duration-500 z-20 
-             ${statusBg}
+              absolute -top-14 left-1/2 -translate-x-1/2 whitespace-nowrap px-6 py-2.5 rounded-full border backdrop-blur-md shadow-lg flex items-center gap-3 animate-in zoom-in duration-500 z-20 
+              ${statusBg}
           `}>
-             <div className={`w-2.5 h-2.5 rounded-full animate-pulse ${isFreeTime ? 'bg-emerald-400 shadow-[0_0_10px_#34d399]' : 'bg-amber-400 shadow-[0_0_10px_#fbbf24]'}`}></div>
-             {statusIcon}
-             <span className={`text-base font-bold tracking-widest uppercase font-mono ${statusColor}`}>
-               {scheduleStatus}
-             </span>
+              <div className={`w-2.5 h-2.5 rounded-full animate-pulse ${isFreeTime ? 'bg-emerald-400 shadow-[0_0_10px_#34d399]' : 'bg-amber-400 shadow-[0_0_10px_#fbbf24]'}`}></div>
+              {statusIcon}
+              <span className={`text-base font-bold tracking-widest uppercase font-mono ${statusColor}`}>
+                {scheduleStatus}
+              </span>
           </div>
 
           <div className="relative mb-4 flex justify-center -mt-10">
-             <div className="absolute -inset-4 rounded-full bg-cyan-500/20 blur-xl animate-ping-slow"></div>
-             <div className="relative z-10 animate-beat drop-shadow-[0_0_20px_rgba(6,182,212,0.8)] bg-slate-900 rounded-full p-2 border border-cyan-500/50">
-               <Lock size={40} className="text-cyan-400" />
-             </div>
+              <div className="absolute -inset-4 rounded-full bg-cyan-500/20 blur-xl animate-ping-slow"></div>
+              <div className="relative z-10 animate-beat drop-shadow-[0_0_20px_rgba(6,182,212,0.8)] bg-slate-900 rounded-full p-2 border border-cyan-500/50">
+                <Lock size={40} className="text-cyan-400" />
+              </div>
           </div>
           
           <h2 className="text-sm font-bold mb-4 text-center uppercase tracking-wider flex items-center gap-2 text-cyan-200">
@@ -304,7 +327,7 @@ export default function LockScreen() {
             {qrCodeUrl ? <img src={qrCodeUrl} alt="QR" className="w-48 h-48 rounded-lg relative z-10" /> : <div className="w-48 h-48 bg-slate-800 flex items-center justify-center text-xs text-slate-400">Yükleniyor...</div>}
           </div>
           <div className="mt-4 text-[10px] text-slate-500 font-mono bg-black/30 px-3 py-1 rounded-full border border-white/5 flex items-center gap-2">
-             <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div> ID: {machineId}
+              <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div> ID: {machineId}
           </div>
         </div>
 
@@ -328,21 +351,45 @@ export default function LockScreen() {
           </div>
           <span className="text-xs font-bold text-red-400 group-hover:text-red-300">SİSTEMİ KAPAT</span>
         </button>
-        <div className="flex flex-col items-end opacity-10 hover:opacity-100 transition-opacity duration-500">
+
+        {/* ACİL DURUM KUTUSU */}
+        <div className="flex flex-col items-end opacity-20 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-500">
            <span className="text-[10px] uppercase font-bold text-slate-500 mb-1">Acil Durum Kodu</span>
-           <input 
-             type="password" 
-             placeholder="" 
-             value={emergencyInput} 
-             onChange={handleEmergency} 
-             maxLength={6}
-             className="bg-black/40 border border-white/20 rounded-lg px-3 py-2 text-center w-32 text-white text-xl outline-none focus:border-red-500 focus:bg-black/80 transition-all font-mono tracking-[0.5em] placeholder:tracking-normal"
-           />
+           <div className="relative flex items-center">
+             <input 
+               type="password" 
+               placeholder="" 
+               value={emergencyInput} 
+               onChange={handleEmergency} 
+               maxLength={6}
+               // onFocus={() => setShowKeyboard(true)} // İstersen aç
+               className="bg-black/40 border border-white/20 rounded-l-lg px-3 py-2 text-center w-32 text-white text-xl outline-none focus:border-red-500 focus:bg-black/80 transition-all font-mono tracking-[0.5em] placeholder:tracking-normal"
+             />
+             
+             {/* Klavye Aç/Kapa Butonu */}
+             <button 
+               onClick={() => setShowKeyboard(!showKeyboard)}
+               className={`h-[46px] px-3 rounded-r-lg border-y border-r border-white/20 flex items-center justify-center transition-colors ${showKeyboard ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50' : 'bg-black/40 text-slate-400 hover:text-white hover:bg-slate-800'}`}
+             >
+                <Keyboard size={20} />
+             </button>
+           </div>
         </div>
       </div>
 
       {activeModal === 'EXAM' && <ExamModal onClose={() => setActiveModal('NONE')} />}
       {activeModal === 'GROUP' && <GroupModal onClose={() => setActiveModal('NONE')} />}
+      
+      {/* 👇 YENİ: SANAL KLAVYE BİLEŞENİ (DÜZELTİLMİŞ HALİ) */}
+      {showKeyboard && (
+        <VirtualKeyboard 
+          value={emergencyInput} // 👈 Değer gönderiliyor (Noktalar için kritik)
+          onKeyPress={handleVirtualKeyPress}
+          onBackspace={handleVirtualBackspace}
+          onEnter={() => setShowKeyboard(false)}
+          onClose={() => setShowKeyboard(false)} // 👈 Kapatma tuşu çalışıyor
+        />
+      )}
 
       <style>{`
         @keyframes beat { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.15); opacity: 0.9; } }
@@ -357,4 +404,4 @@ export default function LockScreen() {
       `}</style>
     </div>
   );
-}// Dosyanın en alt satırına bunu yapıştır:
+}

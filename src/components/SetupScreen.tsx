@@ -1,67 +1,67 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useLock } from '../context/LockContext';
-import { Monitor, Save, Cpu } from 'lucide-react';
+import { SetupKeyboard } from './SetupKeyboard'; // Az önce oluşturduğun klavye dosyası
 
 export default function SetupScreen() {
   const { saveBoardName, machineId } = useLock();
-  const [name, setName] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [boardNameInput, setBoardNameInput] = useState('');
+  
+  // Versiyonu burada sabit tutuyoruz (Gold Master)
+  const currentVersion = '2.0.2'; 
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    
-    setLoading(true);
-    await saveBoardName(name);
-    setLoading(false);
+  const handleSave = () => {
+    // En az 2 karakter girilmezse kaydetmesin
+    if (!boardNameInput || boardNameInput.length < 2) {
+      return; 
+    }
+    saveBoardName(boardNameInput);
   };
 
   return (
-    <div className="w-screen h-screen flex flex-col items-center justify-center bg-slate-900/95 backdrop-blur-xl text-white select-none">
+    <div className="w-screen h-screen bg-slate-950 flex flex-col items-center justify-center text-white overflow-hidden relative select-none">
       
-      <div className="bg-slate-800 p-8 rounded-3xl shadow-2xl border border-slate-700 w-[500px] text-center animate-in fade-in zoom-in duration-500">
+      {/* Arka Plan Efekti */}
+      <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-950 to-black z-0" />
+
+      <div className="z-10 w-full max-w-4xl flex flex-col items-center p-4">
         
-        {/* İkon */}
-        <div className="w-20 h-20 bg-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
-          <Monitor size={40} className="text-cyan-400" />
+        {/* BAŞLIK */}
+        <h1 className="text-4xl md:text-5xl font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-600 tracking-tight drop-shadow-2xl">
+          TeachN'Lock
+        </h1>
+        <p className="text-slate-400 mb-8 text-lg font-light tracking-wide">
+          Akıllı Tahta Kurulum Sihirbazı
+        </p>
+
+        {/* GÖSTERGE EKRANI (Input) */}
+        {/* Klavye çıkmasın diye readOnly yapıyoruz, bizim sanal klavye dolduracak */}
+        <div className="relative w-full max-w-2xl mb-6 group">
+          <div className="absolute -inset-1 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
+          <input
+            type="text"
+            value={boardNameInput}
+            placeholder="Sınıf Adı (Örn: 12/A)"
+            readOnly 
+            className="relative w-full bg-slate-900 border-2 border-slate-700 text-center text-5xl md:text-6xl font-mono py-6 rounded-2xl text-white placeholder-slate-600 focus:border-cyan-500 outline-none shadow-2xl transition-all"
+          />
         </div>
 
-        <h1 className="text-3xl font-bold mb-2">Kurulum</h1>
-        <p className="text-slate-400 mb-8">Lütfen bu akıllı tahta için bir isim belirleyin.</p>
+        {/* 🔥 SANAL KLAVYE BİLEŞENİ 🔥 */}
+        <SetupKeyboard
+          value={boardNameInput}
+          onChange={setBoardNameInput}
+          onEnter={handleSave}
+        />
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          
-          {/* Input */}
-          <div className="text-left">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Tahta Adı</label>
-            <input 
-              type="text" 
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Örn: 12-A Sınıfı"
-              className="w-full bg-slate-900 border border-slate-600 rounded-xl p-4 text-lg text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none transition mt-1"
-              autoFocus
-            />
-          </div>
+        {/* ALT BİLGİ */}
+        <div className="mt-8 flex flex-col items-center gap-1 text-xs text-slate-600 font-mono">
+          <span className="bg-slate-900/50 px-3 py-1 rounded-full border border-slate-800">
+            ID: {machineId || 'TANIMSIZ'}
+          </span>
+          <span className="opacity-50">v{currentVersion} • Secure Boot</span>
+        </div>
 
-          {/* Makine Bilgisi (Silik) */}
-          <div className="flex items-center gap-2 justify-center text-xs text-slate-600 font-mono bg-black/20 p-2 rounded-lg">
-             <Cpu size={12} /> ID: {machineId || 'Algılanıyor...'}
-          </div>
-
-          {/* Kaydet Butonu */}
-          <button 
-            type="submit" 
-            disabled={loading || name.length < 3}
-            className="mt-4 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95"
-          >
-            {loading ? 'Kaydediliyor...' : <><Save size={20}/> KAYDET VE BAŞLAT</>}
-          </button>
-
-        </form>
       </div>
-      
-      <p className="fixed bottom-5 text-slate-600 text-xs">TeachNlock v1.0 • Secure System</p>
     </div>
   );
 }
